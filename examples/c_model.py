@@ -5,13 +5,21 @@ specialize the model (nes stuff)
 profit (memics)
 """
 
+
+import logging
+
+import ctree.np
+logging.basicConfig(level=20)
+
+
 # TVB stochastic surface demo
 
 from tvb.simulator.lab import *
-import nes
+from nes.utils import specialize_model
 
 #Initialise a Model, Coupling, and Connectivity.
-rfhn = models.ReducedSetFitzHughNagumo()
+#rfhn = models.ReducedSetFitzHughNagumo()
+rfhn = models.WilsonCowan()
 white_matter = connectivity.Connectivity(load_default=True)
 white_matter.speed = numpy.array([4.0])
 
@@ -40,7 +48,8 @@ sim = simulator.Simulator(model=rfhn, connectivity=white_matter,
                           surface=default_cortex)
 
 sim.configure()
+specialize_model(sim)
 
-nes.specialize_model(sim)
+for _, _, _ in sim(simulation_length=2):
+    pass
 
-#execute, compare...
