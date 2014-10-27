@@ -34,13 +34,15 @@ def MultiArrayRef(name, *idxs):
 
 class CModelDfunFunction(ConcreteSpecializedFunction):
     def __init__(self, sim, pars):
-        import ipdb; ipdb.set_trace()
-        self.params = [] #TODO implement
+        self.params = np.zeros(len(pars))
+        for i in range(len(pars)):
+            assert(len(getattr(sim.model, pars[i]))==1)#TODO why are those arrays anyway?
+            self.params[i] = getattr(sim.model, pars[i])[0] 
 
     def finalize(self, program, tree, entry_name):
         self._c_function = self._compile(program, tree, entry_name)
     def __call__(self, state_variables, coupling, local_coupling):
-        self._c_function(state_variables, coupling, local_coupling)
+        self._c_function(state_variables, coupling, local_coupling, self.params)
 
 class CMathConversions(NodeTransformer):
     """
@@ -224,7 +226,8 @@ class RemoveComments(NodeTransformer):
 
 
 class CModelDfun(LazySpecializedFunction):
-    def __init__(self,sim):
+    def __init__(self,py_ast, sim):
+        super(CModelDfun,self).__init__(py_ast)
         self.sim = sim
 
     def args_to_subconfig(self, args):
@@ -256,7 +259,6 @@ class CModelDfun(LazySpecializedFunction):
 
 
     def transform(self, tree, program_config):
-        import ipdb; ipdb.set_trace()
         arg_config, tuner_config = program_config
         state_vars = arg_config['state_vars']
         
@@ -285,7 +287,7 @@ class CModelDfun(LazySpecializedFunction):
         proj = Project([prog_tree])
 
 
-        fn = CModelDfunFunction(self.sim, params)
+        fn = CModelDfunFunction(self.sim, pars)
         entry_point_typesig = CFUNCTYPE(None, state_vars)
 
         return fn.finalize("dfun", proj, entry_point_typesig)
