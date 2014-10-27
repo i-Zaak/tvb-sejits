@@ -33,6 +33,10 @@ def MultiArrayRef(name, *idxs):
 
 
 class CModelDfunFunction(ConcreteSpecializedFunction):
+    def __init__(self, sim, pars):
+        import ipdb; ipdb.set_trace()
+        self.params = [] #TODO implement
+
     def finalize(self, program, tree, entry_name):
         self._c_function = self._compile(program, tree, entry_name)
     def __call__(self, state_variables, coupling, local_coupling):
@@ -220,6 +224,9 @@ class RemoveComments(NodeTransformer):
 
 
 class CModelDfun(LazySpecializedFunction):
+    def __init__(self,sim):
+        self.sim = sim
+
     def args_to_subconfig(self, args):
         """
         Analyze arguments and return a 'subconfig', a hashable object
@@ -249,6 +256,7 @@ class CModelDfun(LazySpecializedFunction):
 
 
     def transform(self, tree, program_config):
+        import ipdb; ipdb.set_trace()
         arg_config, tuner_config = program_config
         state_vars = arg_config['state_vars']
         
@@ -277,7 +285,7 @@ class CModelDfun(LazySpecializedFunction):
         proj = Project([prog_tree])
 
 
-        fn = CModelDfunFunction()
+        fn = CModelDfunFunction(self.sim, params)
         entry_point_typesig = CFUNCTYPE(None, state_vars)
 
         return fn.finalize("dfun", proj, entry_point_typesig)
