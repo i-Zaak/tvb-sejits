@@ -15,6 +15,8 @@ from ctypes import CFUNCTYPE, c_double, c_int
 import ast
 from astmonkey import transformers as monkeytrans
 
+import networkx as nx
+
 
 import numpy as np
 
@@ -38,11 +40,14 @@ class CModelDfunFunction(ConcreteSpecializedFunction):
         for i in range(len(pars)):
             assert(len(getattr(sim.model, pars[i]))==1)#TODO why are those arrays anyway?
             self.params[i] = getattr(sim.model, pars[i])[0] 
+        self.derivative = np.zeros((sim.model.nvar, sim.number_of_nodes, sim.model.number_of_modes))
 
     def finalize(self, program, tree, entry_name):
         self._c_function = self._compile(program, tree, entry_name)
     def __call__(self, state_variables, coupling, local_coupling):
-        self._c_function(state_variables, coupling, local_coupling, self.params)
+        self._c_function(state_variables, coupling, local_coupling, self.params, self.derivative)
+        return self.derivative
+
 
 class CMathConversions(NodeTransformer):
     """
@@ -142,7 +147,7 @@ class NamesToArrays(NodeTransformer):
                 return node.value
         if isinstance(node.parent, ast.Assign):
             assert(isinstance(node.slice.dims[0], ast.Index))
-            return MultiArrayRef(SymbolRef(node.value.id),SymbolRef(node.slice.dims[0].value.n), SymbolRef("node_it"))
+            return MultiArrayRef(SymbolRef(node.value.id),SymbolRef(node.slice.dims[0].value.n), SymbolRef("node_it"), SymbolRef("mode_it"))
         else:
             raise RuntimeError("Don't know what to do with subscript.")
 
@@ -171,7 +176,7 @@ class NamesToArrays(NodeTransformer):
                 # C is selfless
                 return None
             else:
-                return SymbolRef(Deref(node.id), self.array_type._dtype_.type())
+                return SymbolRef(Deref(Deref(Deref(node.id))), self.array_type._dtype_.type())
         elif isinstance(node.parent, ast.Assign) and node.parent_field == 'targets':
             # local variable
             return SymbolRef(node.id, self.array_type._dtype_.type()) # danger of repeated declarations!
@@ -190,11 +195,25 @@ class DfunDef(NodeTransformer):
                     c_double()
                     )
                 )
+        node.args.args.append(
+                SymbolRef(
+                    'n_nodes',
+                    c_int()
+                    )
+                )
+        node.args.args.append(
+                SymbolRef(
+                    'n_modes',
+                    c_int()
+                    )
+                )
+        node.args.args.append(
+                SymbolRef(
+                    Deref(Deref(Deref('derivative'))),
+                    c_double()
+                    )
+                )
         return node
-        #arg_config['pars'] = np.ctypeslib.ndpointer(
-        #            dtype=np.float32, # hardwired for now
-        #            ndim=1,
-        #            shape=len(self.pars))
 
 class LoopBody(NodeTransformer):
 
@@ -257,6 +276,9 @@ class CModelDfun(LazySpecializedFunction):
         #TODO: this only captures problem size, should also hash the model type...
         return arg_config
 
+    def parse_to_dag(self,tree):
+        data_dag = nx.DiGraph()
+        # traverse the AST, extract variables and function calls and add them to the DAG as connected nodes 
 
     def transform(self, tree, program_config):
         arg_config, tuner_config = program_config
