@@ -3,7 +3,7 @@ Specializers for neural ensamble models. To be used together with TVB.
 """
 
 from ctree.jit import LazySpecializedFunction, ConcreteSpecializedFunction
-from ctree.visitors import NodeTransformer
+from ctree.visitors import NodeTransformer, NodeVisitor
 from ctree.c.nodes import FunctionCall, CFile, Assign, ArrayRef, SymbolRef, Constant, Op, UnaryOp, Deref, For, Lt, PostInc
 from ctree.cpp.nodes import CppInclude #TODO refactor to C?
 from ctree.nodes import Project
@@ -243,6 +243,30 @@ class RemoveComments(NodeTransformer):
         else:
             return self.generic_visit(node)
 
+class DataDependencies(NodeVisitor):
+    def __init__(self):
+        self.dag = nx.DiGraph()
+
+    def visit_FunctionDef(self,node):
+        for arg in node.args.args:
+            self.dag.add_node(node)
+        self.generic_visit(node)
+
+    def visit_Assign(self,node):
+        assert( len(node.targets)==1) # for now...
+        self.dag.add_edge(node.targets[0], node.value)
+        self.generic_visit(node)
+
+    def visit_BinOp(self,node):
+        self.dag.add_edge(node, node.left)
+        self.dag.add_edge(node, node.right)
+        self.generic_visit(node)
+
+    def visit_Call(self,node):
+        for arg in node.args:
+            self.dag.add_node(node)
+        self.generic_visit(node)
+
 
 class CModelDfun(LazySpecializedFunction):
     def __init__(self,py_ast, sim):
@@ -276,9 +300,6 @@ class CModelDfun(LazySpecializedFunction):
         #TODO: this only captures problem size, should also hash the model type...
         return arg_config
 
-    def parse_to_dag(self,tree):
-        data_dag = nx.DiGraph()
-        # traverse the AST, extract variables and function calls and add them to the DAG as connected nodes 
 
     def transform(self, tree, program_config):
         arg_config, tuner_config = program_config
@@ -286,6 +307,10 @@ class CModelDfun(LazySpecializedFunction):
         
         tree = monkeytrans.ParentNodeTransformer().visit(tree)
         tree = RemoveComments().visit(tree)
+        datadep = DataDependencies()
+        datadep.visit(tree)
+
+        import ipdb; ipdb.set_trace()
 
         # traverse the python AST, replace numpy slices address 
         # locate dot operations and replace accordingly
