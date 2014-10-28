@@ -246,26 +246,62 @@ class RemoveComments(NodeTransformer):
 class DataDependencies(NodeVisitor):
     def __init__(self):
         self.dag = nx.DiGraph()
+        self.variables = {}
+
+    def dag_labels(self):
+        for node in self.dag.nodes_iter():
+            self.dag.node[node]['label'] = ast.dump(node)
 
     def visit_FunctionDef(self,node):
         for arg in node.args.args:
-            self.dag.add_node(node)
+            self.dag.add_node(arg)
+            self.variables[arg.id] = arg
         self.generic_visit(node)
 
-    def visit_Assign(self,node):
-        assert( len(node.targets)==1) # for now...
-        self.dag.add_edge(node.targets[0], node.value)
+    #def visit_Assign(self,node):
+    #    assert( len(node.targets)==1) # for now...
+    #    target = node.targets[0]
+
+    #    self.dag.add_edge(target, node.value)
+    #    self.variables[target.id] = node.value 
+    #    self.generic_visit(node)
+
+    def visit_Subscript(self,node):
+        self.dag.add_edge(node, node.value)
         self.generic_visit(node)
 
     def visit_BinOp(self,node):
-        self.dag.add_edge(node, node.left)
-        self.dag.add_edge(node, node.right)
+        if isinstance(node, ast.Name):
+            self.dag.add_edge(node, self.variables[node.left.id])
+        else:
+            self.dag.add_edge(node, node.left)
+        if isinstance(node, ast.Name):
+            self.dag.add_edge(node, self.variables[node.right.id])
+        else:
+            self.dag.add_edge(node, node.right)
         self.generic_visit(node)
 
     def visit_Call(self,node):
         for arg in node.args:
-            self.dag.add_node(node)
+            if isinstance(arg, ast.Name):
+                self.dag.add_edge(node,self.variables[arg.id])
+            else:
+                self.dag.add_edge(node,arg)
         self.generic_visit(node)
+
+    def visit_Name(self,node):
+        if isinstance(node.ctx, ast.Store):
+            self.dag.add_edge(node, node.parent.value)
+            self.variables[node.id] = node 
+            self.generic_visit(node)
+
+        elif isinstance(node.ctx, ast.Param): 
+            self.variables[node.id] = node
+        elif isinstance(node.ctx, ast.Load) and not isinstance(node.parent, ast.Attribute):
+            self.dag.add_edge(node.parent, self.variables[node.id])
+
+        self.generic_visit(node)
+
 
 
 class CModelDfun(LazySpecializedFunction):
@@ -299,7 +335,7 @@ class CModelDfun(LazySpecializedFunction):
                 }
         #TODO: this only captures problem size, should also hash the model type...
         return arg_config
-
+    
 
     def transform(self, tree, program_config):
         arg_config, tuner_config = program_config
@@ -309,6 +345,7 @@ class CModelDfun(LazySpecializedFunction):
         tree = RemoveComments().visit(tree)
         datadep = DataDependencies()
         datadep.visit(tree)
+        
 
         import ipdb; ipdb.set_trace()
 
