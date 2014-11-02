@@ -248,9 +248,11 @@ class DataDependencies(NodeVisitor):
         self.dag = nx.DiGraph()
         self.variables = {}
 
-    def dag_labels(self):
+    def write_dag(self, filename):
         for node in self.dag.nodes_iter():
             self.dag.node[node]['label'] = ast.dump(node)
+
+        nx.write_graphml(self.dag,filename)
 
     def visit_FunctionDef(self,node):
         for arg in node.args.args:
@@ -267,18 +269,28 @@ class DataDependencies(NodeVisitor):
     #    self.generic_visit(node)
 
     def visit_Subscript(self,node):
-        self.dag.add_edge(node, node.value)
+        if isinstance(node.value, ast.Name):
+            self.dag.add_edge(node, self.variables[node.value.id])
+        else:
+            self.dag.add_edge(node, node.value)
         self.generic_visit(node)
 
     def visit_BinOp(self,node):
-        if isinstance(node, ast.Name):
+        if isinstance(node.left, ast.Name):
             self.dag.add_edge(node, self.variables[node.left.id])
         else:
             self.dag.add_edge(node, node.left)
-        if isinstance(node, ast.Name):
+        if isinstance(node.right, ast.Name):
             self.dag.add_edge(node, self.variables[node.right.id])
         else:
             self.dag.add_edge(node, node.right)
+        self.generic_visit(node)
+
+    def visit_UnaryOp(self,node):
+        if isinstance(node.operand, ast.Name):
+            self.dag.add_edge(node, self.variables[node.operand.id])
+        else:
+            self.dag.add_edge(node, node.operand)
         self.generic_visit(node)
 
     def visit_Call(self,node):
@@ -295,13 +307,31 @@ class DataDependencies(NodeVisitor):
             self.variables[node.id] = node 
             self.generic_visit(node)
 
-        elif isinstance(node.ctx, ast.Param): 
-            self.variables[node.id] = node
-        elif isinstance(node.ctx, ast.Load) and not isinstance(node.parent, ast.Attribute):
-            self.dag.add_edge(node.parent, self.variables[node.id])
+        ## handeled by function def
+        #elif isinstance(node.ctx, ast.Param): 
+        #    self.variables[node.id] = node
+        #    self.dag.add_node(node)
+        ## should be covered by ops
+        #elif isinstance(node.ctx, ast.Load) and not isinstance(node.parent, ast.Attribute):
+        #    self.dag.add_edge(node.parent, self.variables[node.id])
 
         self.generic_visit(node)
 
+def deps_to_types(deps, sim):
+    G = deps.reverse()
+    sources = [n for n,d in G.in_degree_iter() if d ==0]
+    for s in sources:
+        print ast.dump(s)
+    import ipdb; ipdb.set_trace()
+    # type function params, (also self.params)
+    # add common source to function params
+    node_types = {}
+    # dfs propagate types
+    #   per element array ops
+    #   per element array op scalar
+    #   slices
+
+    return node_types
 
 
 class CModelDfun(LazySpecializedFunction):
@@ -345,8 +375,8 @@ class CModelDfun(LazySpecializedFunction):
         tree = RemoveComments().visit(tree)
         datadep = DataDependencies()
         datadep.visit(tree)
-        
 
+        deps_to_types(datadep.dag, self.sim)
         import ipdb; ipdb.set_trace()
 
         # traverse the python AST, replace numpy slices address 
