@@ -247,7 +247,7 @@ class DataDependencies(NodeVisitor):
     def __init__(self):
         self.dag = nx.DiGraph()
         self.variables = {}
-        self.return = None
+        self.ret = None
 
     def write_dag(self, filename):
         for node in self.dag.nodes_iter():
@@ -332,15 +332,22 @@ class DataDependencies(NodeVisitor):
             self.dag.add_edge(node,self.variables[node.value.id])
         else:
             self.dag.add_edge(node,node.value)
-        assert(self.return is None) # sanity check
-        self.return = node
+        assert(self.ret is None) # sanity check
+        self.ret = node
         self.generic_visit(node)
 
+def linearize_dag(G):
+    D = nx.DiGraph(G)
+    lin = []
+    while D.number_of_nodes() > 0:
+        leaves = [n for n,d in D.out_degree_iter() if d ==0]
+        lin.extend(leaves)
+        for node in leaves:
+            D.remove_node(node)
+    return lin
 
-def deps_to_types(deps, sim):
-    G = deps.reverse()
-    G.add_node("common_source") # ugly, but sufficient
-    sources = [n for n,d in G.in_degree_iter() if d ==0]
+
+def deps_to_types(deps, ret, sim):
     node_types = {}
     # type function params, (also self.params) ... needed?
     n_svar = len(sim.model.state_variables)
@@ -348,6 +355,7 @@ def deps_to_types(deps, sim):
     n_cvar = len(sim.model.cvar)
     n_nodes = sim.number_of_nodes
 
+    sources = [n for n,d in deps.out_degree_iter() if d ==0]
     for s in sources:
         if isinstance(s, ast.Attribute):
             assert(s.value.id =='self')
@@ -371,31 +379,38 @@ def deps_to_types(deps, sim):
                 continue
             else:
                 raise Exception("dfun"+ ast.dump(s.parent) + " has too many arguments " + ast.dump(s))
-        # add common source to function params
-        G.add_edge("common_source", s)
-    # bfs propagate types
-    bfs = nx.bfs_edges(G, 'common_source')
-    bfs.next() # get rid of the common source
-    for source , node in bfs:
+        elif isinstance(s,ast.Num):
+            node_types[s] = "scalar"
+        else: 
+            raise Exception("Unknown source node type " + ast.dump(s))
+    
+    # dependence edges in resolved order (linearization from return value)
+    dep_nodes = linearize_dag(deps)
+    for node in dep_nodes:
         if node_types.has_key(node):
             continue # it is a source
         # map operators
         if isinstance(node, ast.BinOp):
-            if node_types[node.left] == node_types[node_right]:
+            parents = [v for (u,v) in deps.out_edges([node])]
+            assert(len(parents) == 2)
+            if node_types[parents[0]] == node_types[parents[1]]:
                 #   per element array ops
-                node_types[node] = node_types[node.left]
+                node_types[node] = node_types[ parents[0]]
             else:
                 #   per element array op scalar
-                if node_types[node.left] == "scalar":
-                    node_types[node] = node_types[node.right]
-                elif node_types[node_right]== "scalar":
-                    node_types[node] = node_types[node.left]
+                if node_types[parents[0]] == "scalar":
+                    node_types[node] = node_types[parents[1]]
+                elif node_types[parents[1]]== "scalar":
+                    node_types[node] = node_types[parents[0]]
                 else:
                     raise Exception("Binary operator dimension mismatch "+ ast.dump(node))
         # TODO reduce operators?
         #   slices
         if isinstance(node, ast.Subscript):
-            dims_source = node_types[source]
+            sucs = deps.successors(node)
+            assert(len(sucs)==1) # depends only on one expression
+            suc = sucs[0]
+            dims_source = node_types[suc]
             dims = []
             for i, dim in enumerate(node.slice.dims):
                 if isinstance(dim, ast.Index):
@@ -404,18 +419,21 @@ def deps_to_types(deps, sim):
                     assert(dim.upper is None and  dim.lower is None and dim.step is None) # very talkative... 
                     dims.append(dims_source[i])
 
-            dims_sub = len(node.slice.dims)
-            if dims_sub < dims_source:
-                dims.extend(node.slice.dims[- dims_source - dims_sub]) 
-
-            import ipdb; ipdb.set_trace()
+            nd_sub = len(node.slice.dims)
+            nd_source = len(dims_source)
+            for d in range( nd_sub, nd_source):
+                dims.append(dims_source[d]) 
+            node_types[node] = dims
 
 
                 
         # assignments
         if isinstance(node, ast.Name):
             assert( isinstance(node.ctx, ast.Store) ) 
-            node_types[node] = node_types[source]
+            sucs = deps.successors(node) 
+            assert(len(sucs)==1) # single data dependency
+            suc = sucs[0]
+            node_types[node] = node_types[suc]
 
 
 
@@ -464,9 +482,9 @@ class CModelDfun(LazySpecializedFunction):
         tree = RemoveComments().visit(tree)
         datadep = DataDependencies()
         datadep.visit(tree)
-        import ipdb; ipdb.set_trace()
 
-        deps_to_types(datadep.dag, self.sim)
+        deps_to_types(datadep.dag, datadep.ret, self.sim)
+        import ipdb; ipdb.set_trace()
 
         # traverse the python AST, replace numpy slices address 
         # locate dot operations and replace accordingly
