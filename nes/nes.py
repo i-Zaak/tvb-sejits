@@ -247,6 +247,7 @@ class DataDependencies(NodeVisitor):
     def __init__(self):
         self.dag = nx.DiGraph()
         self.variables = {}
+        self.return = None
 
     def write_dag(self, filename):
         for node in self.dag.nodes_iter():
@@ -256,8 +257,9 @@ class DataDependencies(NodeVisitor):
 
     def visit_FunctionDef(self,node):
         for arg in node.args.args:
-            self.dag.add_node(arg)
-            self.variables[arg.id] = arg
+            if arg.id != "self":
+                self.dag.add_node(arg)
+                self.variables[arg.id] = arg
         self.generic_visit(node)
 
     #def visit_Assign(self,node):
@@ -317,19 +319,106 @@ class DataDependencies(NodeVisitor):
 
         self.generic_visit(node)
 
+    def visit_List(self,node):
+        for elt in node.elts:
+            if isinstance(elt, ast.Name):
+                self.dag.add_edge(node,self.variables[elt.id])
+            else:
+                self.dag.add_edge(node,elt)
+        self.generic_visit(node)
+
+    def visit_Return(self,node):
+        if isinstance(node.value, ast.Name):
+            self.dag.add_edge(node,self.variables[node.value.id])
+        else:
+            self.dag.add_edge(node,node.value)
+        assert(self.return is None) # sanity check
+        self.return = node
+        self.generic_visit(node)
+
+
 def deps_to_types(deps, sim):
     G = deps.reverse()
+    G.add_node("common_source") # ugly, but sufficient
     sources = [n for n,d in G.in_degree_iter() if d ==0]
-    for s in sources:
-        print ast.dump(s)
-    import ipdb; ipdb.set_trace()
-    # type function params, (also self.params)
-    # add common source to function params
     node_types = {}
-    # dfs propagate types
-    #   per element array ops
-    #   per element array op scalar
-    #   slices
+    # type function params, (also self.params) ... needed?
+    n_svar = len(sim.model.state_variables)
+    n_modes = sim.model.number_of_modes
+    n_cvar = len(sim.model.cvar)
+    n_nodes = sim.number_of_nodes
+
+    for s in sources:
+        if isinstance(s, ast.Attribute):
+            assert(s.value.id =='self')
+            node_types[s] = ("scalar",) # better scalar representation?
+        elif isinstance(s, ast.Name):
+            assert(isinstance(s.ctx, ast.Param))
+            if s.parent_field_index == 1: 
+                # state variables
+                node_types[s] = ("n_svar", "n_nodes", "n_modes")
+            elif s.parent_field_index == 2: 
+                # coupling
+                node_types[s] = ("n_cvar", "n_nodes", "n_modes")
+            elif s.parent_field_index == 3: 
+                # local_coupling
+                node_types[s] = ("n_nodes", "n_nodes")
+            elif s.parent_field_index == 4: 
+                # stimulus, TODO
+                continue
+            elif s.parent_field_index == 0: 
+                # self, remove...
+                continue
+            else:
+                raise Exception("dfun"+ ast.dump(s.parent) + " has too many arguments " + ast.dump(s))
+        # add common source to function params
+        G.add_edge("common_source", s)
+    # bfs propagate types
+    bfs = nx.bfs_edges(G, 'common_source')
+    bfs.next() # get rid of the common source
+    for source , node in bfs:
+        if node_types.has_key(node):
+            continue # it is a source
+        # map operators
+        if isinstance(node, ast.BinOp):
+            if node_types[node.left] == node_types[node_right]:
+                #   per element array ops
+                node_types[node] = node_types[node.left]
+            else:
+                #   per element array op scalar
+                if node_types[node.left] == "scalar":
+                    node_types[node] = node_types[node.right]
+                elif node_types[node_right]== "scalar":
+                    node_types[node] = node_types[node.left]
+                else:
+                    raise Exception("Binary operator dimension mismatch "+ ast.dump(node))
+        # TODO reduce operators?
+        #   slices
+        if isinstance(node, ast.Subscript):
+            dims_source = node_types[source]
+            dims = []
+            for i, dim in enumerate(node.slice.dims):
+                if isinstance(dim, ast.Index):
+                    dims.append("scalar")
+                if isinstance(dim, ast.Slice):
+                    assert(dim.upper is None and  dim.lower is None and dim.step is None) # very talkative... 
+                    dims.append(dims_source[i])
+
+            dims_sub = len(node.slice.dims)
+            if dims_sub < dims_source:
+                dims.extend(node.slice.dims[- dims_source - dims_sub]) 
+
+            import ipdb; ipdb.set_trace()
+
+
+                
+        # assignments
+        if isinstance(node, ast.Name):
+            assert( isinstance(node.ctx, ast.Store) ) 
+            node_types[node] = node_types[source]
+
+
+
 
     return node_types
 
@@ -375,9 +464,9 @@ class CModelDfun(LazySpecializedFunction):
         tree = RemoveComments().visit(tree)
         datadep = DataDependencies()
         datadep.visit(tree)
+        import ipdb; ipdb.set_trace()
 
         deps_to_types(datadep.dag, self.sim)
-        import ipdb; ipdb.set_trace()
 
         # traverse the python AST, replace numpy slices address 
         # locate dot operations and replace accordingly
