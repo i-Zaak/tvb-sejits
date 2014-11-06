@@ -10,6 +10,9 @@ import logging
 
 import ctree.np
 logging.basicConfig(level=20)
+import sys
+assert len(sys.argv) == 2, "do you want specialization? [0,1]"
+
 
 
 # TVB stochastic surface demo
@@ -32,14 +35,20 @@ heunint = integrators.HeunStochastic(dt=2 ** -4, noise=hiss)
 #Initialise some Monitors with period in physical time
 mon_tavg = monitors.TemporalAverage(period=2 ** -2)
 mon_savg = monitors.SpatialAverage(period=2 ** -2)
-mon_eeg = monitors.EEG(period=2 ** -2)
 
 #Bundle them
-what_to_watch = (mon_tavg, mon_savg, mon_eeg)
+what_to_watch = (mon_tavg, mon_savg)
+
+#grey_matter = surfaces.LocalConnectivity(cutoff=40.0)
+#grey_matter.equation.parameters['sigma'] = 10.0
+#grey_matter.equation.parameters['amp'] = 1.0
+#local_coupling_strength = numpy.array([-0.0115])
+
 
 #Initialise a surface
-default_cortex = surfaces.Cortex.from_file()
-default_cortex.local_connectivity = surfaces.LocalConnectivity(load_default=True)
+default_cortex = surfaces.Cortex(load_default=True)
+#default_cortex.local_connectivity = grey_matter
+#default_cortex.coupling_strength = local_coupling_strength
 
 #Initialise Simulator -- Model, Connectivity, Integrator, Monitors, and surface.
 sim = simulator.Simulator(model=rfhn, connectivity=white_matter,
@@ -48,8 +57,10 @@ sim = simulator.Simulator(model=rfhn, connectivity=white_matter,
                           surface=default_cortex)
 
 sim.configure()
-specialize_model(sim)
 
-for _, _, _ in sim(simulation_length=2):
+if sys.argv[1] == '1':
+    specialize_model(sim)
+
+for _, _ in sim(simulation_length=2):
     pass
 
