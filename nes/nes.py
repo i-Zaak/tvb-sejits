@@ -114,6 +114,7 @@ class  DotReplacement(NodeTransformer):
 class ModelParameters(NodeTransformer):
     '''
     Both changes the syntax and accumulates the list of used parameters.
+    Change later for vector parameters with per-node values
     '''
 
     def __init__(self):
@@ -129,45 +130,50 @@ class ModelParameters(NodeTransformer):
 
 class NamesToArrays(NodeTransformer):
     
-    def __init__(self, array_type):
+    def __init__(self, array_type, node_types):
         self.array_type = array_type
+        self.node_types = node_types
 
     # get rid of model parameters
     def visit_Attribute(self, node):
-        if node.value.id == 'numpy':
+        if node.value.id != 'self':
             # not a vairable, skip
             return self.generic_visit(node)
         else:
             raise RuntimeError('Unsupported structure for attributes: %s'% node.value.id)
 
     def visit_Subscript(self, node):
-        # get rid of newaxis syntactic sugar
-        for s in node.slice.dims:
-            if isinstance(s, ast.Index) and isinstance(s.value, ast.Attribute) and s.value.attr == 'newaxis':
-                return node.value
-        if isinstance(node.parent, ast.Assign):
-            assert(isinstance(node.slice.dims[0], ast.Index))
-            return MultiArrayRef(SymbolRef(node.value.id),SymbolRef(node.slice.dims[0].value.n), SymbolRef("node_it"), SymbolRef("mode_it"))
-        else:
-            raise RuntimeError("Don't know what to do with subscript.")
+        """
+        translates numpy subscripts to pointer arithmetics...
+        """
+        assert(self.node_types[node][0] == "scalar") # just don't try anything funny
+        assert(isinstance(node.slice,ast.ExtSlice) and isinstance(node.slice.dims[0].value, ast.Num))
+        # TODO deal with modes...
+        return ArrayRef(node.value.id, str(node.slice.dims[0].value.n) + " * n_nodes + node_it" ) 
+
+
 
     def visit_Assign(self,node):
-        if not (isinstance(node.targets[0], ast.Name) and node.targets[0].id == 'derivative'):
+        # looking for assignment derivative = numpy.array([...])
+        if not (isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == 'array'):
             return self.generic_visit(node)
-        
-        return Assign(
-                MultiArrayRef(
-                    SymbolRef('derivative'),
-                    Constant(0),
-                    SymbolRef("node_it"),
-                    SymbolRef("mode_it")
-                ),
-                SymbolRef(node.value.args[0].elts[0].id)
-                )
+        # this needs to be done separately for each partial derivative
+        assert(len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)) 
+        target = node.targets[0].id
+        new_nodes = []
+        assert( len(node.value.args) == 1 and isinstance(node.value.args[0], ast.List))
+        for i, var in enumerate(node.value.args[0].elts):
+            assert(isinstance(var,ast.Name))
+            new_nodes.append(
+                    Assign(
+                        ArrayRef(target,str(i) + " * n_nodes + node_it" ),
+                        var.id
+                        )
+                    )
+        return new_nodes
 
-    def visit_Return(self,node):
-        assert(node.value.id == 'derivative') 
-        return None
+
+
 
     def visit_Name(self, node):
         if isinstance(node.ctx, ast.Param):
@@ -176,7 +182,7 @@ class NamesToArrays(NodeTransformer):
                 # C is selfless
                 return None
             else:
-                return SymbolRef(Deref(Deref(Deref(node.id))), self.array_type._dtype_.type())
+                return SymbolRef(Deref(node.id), self.array_type._dtype_.type())
         elif isinstance(node.parent, ast.Assign) and node.parent_field == 'targets':
             # local variable
             return SymbolRef(node.id, self.array_type._dtype_.type()) # danger of repeated declarations!
@@ -186,6 +192,9 @@ class NamesToArrays(NodeTransformer):
 class DfunDef(NodeTransformer):
     def __init__(self,pars):
         self.pars = pars
+    def visit_Return(self,node):
+        # TODO add return variable
+        return None
 
 
     def visit_FunctionDef(self,node):
@@ -209,11 +218,12 @@ class DfunDef(NodeTransformer):
                 )
         node.args.args.append(
                 SymbolRef(
-                    Deref(Deref(Deref('derivative'))),
+                    Deref('derivative'),
                     c_double()
                     )
                 )
-        return node
+        #return node
+        return self.generic_visit(node)
 
 class LoopBody(NodeTransformer):
 
@@ -222,14 +232,7 @@ class LoopBody(NodeTransformer):
                 init = Assign(SymbolRef("node_it", c_int()), Constant(0)),
                 test = Lt(SymbolRef("node_it"), Constant( SymbolRef('n_nodes'))),
                 incr = PostInc(SymbolRef("node_it")),
-                body = [
-                    For(
-                        init = Assign(SymbolRef("mode_it", c_int()), Constant(0)),
-                        test = Lt(SymbolRef("mode_it"), Constant(SymbolRef('n_modes'))),
-                        incr = PostInc(SymbolRef("mode_it")),
-                        body = node.body
-                        )
-                    ]
+                body = node.body 
                 )]
         node.body = loop
         return node
@@ -351,9 +354,29 @@ def deps_to_types(deps, ret, sim):
     node_types = {}
     # type function params, (also self.params) ... needed?
     n_svar = len(sim.model.state_variables)
+    if n_svar == 1:
+        svar_d = "scalar"
+    else:
+        svar_d = "n_svar"
+
     n_modes = sim.model.number_of_modes
+    if n_modes == 1:
+        modes_d = "scalar"
+    else:
+        modes_d = "n_modes"
+
     n_cvar = len(sim.model.cvar)
+    if n_cvar == 1:
+        cvar_d = "scalar"
+    else:
+        cvar_d = "n_cvar"
+
+    # TODO when implemented
+    #n_lcvar = len(sim.model.lcvar)
+    lcvar_d = "scalar" # TODO
+
     n_nodes = sim.number_of_nodes
+    nodes_d = "n_nodes"
 
     sources = [n for n,d in deps.out_degree_iter() if d ==0]
     for s in sources:
@@ -364,13 +387,13 @@ def deps_to_types(deps, ret, sim):
             assert(isinstance(s.ctx, ast.Param))
             if s.parent_field_index == 1: 
                 # state variables
-                node_types[s] = ("n_svar", "n_nodes", "n_modes")
+                node_types[s] = (svar_d, nodes_d, modes_d)
             elif s.parent_field_index == 2: 
                 # coupling
-                node_types[s] = ("n_cvar", "n_nodes", "n_modes")
+                node_types[s] = (cvar_d, nodes_d, modes_d)
             elif s.parent_field_index == 3: 
                 # local_coupling
-                node_types[s] = ("n_nodes", "n_nodes")
+                node_types[s] = (lcvar_d, nodes_d, modes_d)
             elif s.parent_field_index == 4: 
                 # stimulus, TODO
                 continue
@@ -380,10 +403,11 @@ def deps_to_types(deps, ret, sim):
             else:
                 raise Exception("dfun"+ ast.dump(s.parent) + " has too many arguments " + ast.dump(s))
         elif isinstance(s,ast.Num):
-            node_types[s] = "scalar"
+            node_types[s] = ("scalar", )
         else: 
             raise Exception("Unknown source node type " + ast.dump(s))
-    
+    arr_c = 0
+
     # dependence edges in resolved order (linearization from return value)
     dep_nodes = linearize_dag(deps)
     for node in dep_nodes:
@@ -398,12 +422,35 @@ def deps_to_types(deps, ret, sim):
                 node_types[node] = node_types[ parents[0]]
             else:
                 #   per element array op scalar
-                if node_types[parents[0]] == "scalar":
+                if node_types[parents[0]] == ("scalar",):
                     node_types[node] = node_types[parents[1]]
-                elif node_types[parents[1]]== "scalar":
+                elif node_types[parents[1]]== ("scalar",):
                     node_types[node] = node_types[parents[0]]
                 else:
                     raise Exception("Binary operator dimension mismatch "+ ast.dump(node))
+
+        if isinstance(node, ast.UnaryOp) or isinstance(node, ast.Return):
+            parents = [v for (u,v) in deps.out_edges([node])]
+            assert(len(parents) == 1)
+            node_types[node] = node_types[ parents[0]]
+
+        if isinstance(node, ast.List):
+            parents = [v for (u,v) in deps.out_edges([node])]
+            assert(len(parents) > 0)
+            # this should be more generic if used outside arranging derivative for return...
+            par_type = node_types[parents[0]]
+            for p in parents:
+                assert(node_types[p] == par_type) # more sanity checks
+            node_types[node] = ("arr_" + str(arr_c),par_type[1], par_type[2])
+            arr_c +=1
+
+        if isinstance(node, ast.Call):
+            # TODO be more generic than numpy functions?
+            assert(isinstance(node.func, ast.Attribute) and node.func.value.id == "numpy")
+            parents = [v for (u,v) in deps.out_edges([node])]
+            assert(len(parents) == 1)
+            node_types[node] = node_types[ parents[0]] # works both for array and per element functions
+
         # TODO reduce operators?
         #   slices
         if isinstance(node, ast.Subscript):
@@ -423,10 +470,9 @@ def deps_to_types(deps, ret, sim):
             nd_source = len(dims_source)
             for d in range( nd_sub, nd_source):
                 dims.append(dims_source[d]) 
-            node_types[node] = dims
+            node_types[node] = tuple(dims)
 
 
-                
         # assignments
         if isinstance(node, ast.Name):
             assert( isinstance(node.ctx, ast.Store) ) 
@@ -434,9 +480,6 @@ def deps_to_types(deps, ret, sim):
             assert(len(sucs)==1) # single data dependency
             suc = sucs[0]
             node_types[node] = node_types[suc]
-
-
-
 
     return node_types
 
@@ -483,18 +526,19 @@ class CModelDfun(LazySpecializedFunction):
         datadep = DataDependencies()
         datadep.visit(tree)
 
-        deps_to_types(datadep.dag, datadep.ret, self.sim)
-        import ipdb; ipdb.set_trace()
+        node_types = deps_to_types(datadep.dag, datadep.ret, self.sim)
 
         # traverse the python AST, replace numpy slices address 
         # locate dot operations and replace accordingly
         tree = CMathConversions().visit(tree)
-        tree = DotReplacement().visit(tree)
+    
+        # maybe later
+        # tree = DotReplacement().visit(tree)
         params = ModelParameters()
         tree = params.visit(tree)
         pars = sorted(params.pars, key=params.pars.get)
 
-        tree = NamesToArrays(state_vars).visit(tree)
+        tree = NamesToArrays(state_vars, node_types).visit(tree)
         tree = DfunDef(pars).visit(tree)
         tree = LoopBody().visit(tree)
         # not needed, for now...
