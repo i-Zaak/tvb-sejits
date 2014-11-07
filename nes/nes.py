@@ -4,7 +4,7 @@ Specializers for neural ensamble models. To be used together with TVB.
 
 from ctree.jit import LazySpecializedFunction, ConcreteSpecializedFunction
 from ctree.visitors import NodeTransformer, NodeVisitor
-from ctree.c.nodes import FunctionCall, CFile, Assign, ArrayRef, SymbolRef, Constant, Op, UnaryOp, Deref, For, Lt, PostInc
+from ctree.c.nodes import FunctionCall, CFile, Assign, ArrayRef, SymbolRef, Constant, Op, UnaryOp, Deref, For, Lt, PostInc, BinaryOp
 from ctree.cpp.nodes import CppInclude #TODO refactor to C?
 from ctree.nodes import Project
 from ctree.transformations import PyBasicConversions
@@ -44,6 +44,7 @@ class CModelDfunFunction(ConcreteSpecializedFunction):
 
     def finalize(self, program, tree, entry_name):
         self._c_function = self._compile(program, tree, entry_name)
+        return self
     def __call__(self, state_variables, coupling, local_coupling):
         self._c_function(state_variables, coupling, local_coupling, self.params, self.derivative)
         return self.derivative
@@ -129,10 +130,16 @@ class ModelParameters(NodeTransformer):
             return self.generic_visit(node)
 
 class NamesToArrays(NodeTransformer):
+    """
+    Translates broadcasts to array refernces -- needs refactoring and generalization.
+    """
+
     
-    def __init__(self, array_type, node_types):
+    def __init__(self, array_type, node_types, variables):
         self.array_type = array_type
         self.node_types = node_types
+        self.variables = variables
+
 
     # get rid of model parameters
     def visit_Attribute(self, node):
@@ -142,6 +149,9 @@ class NamesToArrays(NodeTransformer):
         else:
             raise RuntimeError('Unsupported structure for attributes: %s'% node.value.id)
 
+
+
+
     def visit_Subscript(self, node):
         """
         translates numpy subscripts to pointer arithmetics...
@@ -149,17 +159,30 @@ class NamesToArrays(NodeTransformer):
         assert(self.node_types[node][0] == "scalar") # just don't try anything funny
         assert(isinstance(node.slice,ast.ExtSlice) and isinstance(node.slice.dims[0].value, ast.Num))
         # TODO deal with modes...
-        return ArrayRef(node.value.id, str(node.slice.dims[0].value.n) + " * n_nodes + node_it" ) 
+        #return ArrayRef(node.value.id, str(node.slice.dims[0].value.n) + " * n_nodes + node_it" ) 
+        return BinaryOp(
+                SymbolRef(node.value.id), 
+                Op.Add(),
+                str(node.slice.dims[0].value.n) + " * n_nodes"
+                )
+        
 
 
 
     def visit_Assign(self,node):
+        assert(len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)) 
+        target = node.targets[0].id
+
+        if isinstance(node.value,ast.Subscript):
+            # special case
+            return Assign(
+                    SymbolRef(Deref(target), self.array_type._dtype_.type()),
+                    self.visit(node.value)
+                    )
         # looking for assignment derivative = numpy.array([...])
         if not (isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == 'array'):
             return self.generic_visit(node)
         # this needs to be done separately for each partial derivative
-        assert(len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)) 
-        target = node.targets[0].id
         new_nodes = []
         assert( len(node.value.args) == 1 and isinstance(node.value.args[0], ast.List))
         for i, var in enumerate(node.value.args[0].elts):
@@ -172,9 +195,6 @@ class NamesToArrays(NodeTransformer):
                     )
         return new_nodes
 
-
-
-
     def visit_Name(self, node):
         if isinstance(node.ctx, ast.Param):
             # function declaration
@@ -183,9 +203,15 @@ class NamesToArrays(NodeTransformer):
                 return None
             else:
                 return SymbolRef(Deref(node.id), self.array_type._dtype_.type())
-        elif isinstance(node.parent, ast.Assign) and node.parent_field == 'targets':
+        type_variable = self.variables[node.id]
+        if isinstance(node.parent, ast.Assign) and node.parent_field == 'targets':
             # local variable
+            self.node_types[type_variable] = ("scalar",) # this may change for different target architectures
             return SymbolRef(node.id, self.array_type._dtype_.type()) # danger of repeated declarations!
+        elif self.node_types[type_variable] != ("scalar",): # sigh
+            # TODO deal with modes... add a loop in case of nonsingular third dimension
+            # TODO deal with slices, assumes singular 1. dimension (= 1 state/coupling variable)
+            return ArrayRef(node.id, "node_it" ) 
         else:
             return self.generic_visit(node)#SymbolRef(node.id, self.array_type())
 
@@ -538,7 +564,7 @@ class CModelDfun(LazySpecializedFunction):
         tree = params.visit(tree)
         pars = sorted(params.pars, key=params.pars.get)
 
-        tree = NamesToArrays(state_vars, node_types).visit(tree)
+        tree = NamesToArrays(state_vars, node_types, datadep.variables).visit(tree)
         tree = DfunDef(pars).visit(tree)
         tree = LoopBody().visit(tree)
         # not needed, for now...
