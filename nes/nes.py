@@ -41,12 +41,15 @@ class CModelDfunFunction(ConcreteSpecializedFunction):
             assert(len(getattr(sim.model, pars[i]))==1)#TODO why are those arrays anyway?
             self.params[i] = getattr(sim.model, pars[i])[0] 
         self.derivative = np.zeros((sim.model.nvar, sim.number_of_nodes, sim.model.number_of_modes))
+        self.n_nodes = sim.number_of_nodes
+        self.n_modes = sim.model.number_of_modes
 
     def finalize(self, program, tree, entry_name):
         self._c_function = self._compile(program, tree, entry_name)
         return self
+
     def __call__(self, state_variables, coupling, local_coupling):
-        self._c_function(state_variables, coupling, local_coupling, self.params, self.derivative)
+        self._c_function(state_variables, coupling, local_coupling, self.params, self.n_nodes, self.n_modes, self.derivative)
         return self.derivative
 
 
@@ -579,7 +582,22 @@ class CModelDfun(LazySpecializedFunction):
 
 
         fn = CModelDfunFunction(self.sim, pars)
-        entry_point_typesig = CFUNCTYPE(None, state_vars)
 
-        return fn.finalize("dfun", proj, entry_point_typesig)
+        dtype = self.sim.history.dtype
+        typesig = CFUNCTYPE(
+                None, 
+                arg_config["state_vars"], 
+                arg_config["coupling"],
+                arg_config["local_coupling"],
+                np.ctypeslib.ndpointer(
+                    dtype, 
+                    1,
+                    shape=(len(pars))
+                    ), #params
+                c_int, #n_nodes
+                c_int, #n_modes
+                arg_config["state_vars"] # derivative
+                )
+
+        return fn.finalize("dfun", proj, typesig)
 

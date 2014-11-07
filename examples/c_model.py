@@ -8,7 +8,6 @@ profit (memics)
 
 import logging
 
-import ctree.np
 logging.basicConfig(level=20)
 import sys
 assert len(sys.argv) == 2, "do you want specialization? [0,1]"
