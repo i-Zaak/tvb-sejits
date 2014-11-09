@@ -10,6 +10,9 @@ from ctree.nodes import Project
 from ctree.transformations import PyBasicConversions
 from ctree.templates.nodes import StringTemplate
 from ctypes import CFUNCTYPE, c_double, c_int
+from ctree.types import get_ctype
+
+import ctypes
 
 
 import ast
@@ -128,7 +131,7 @@ class ModelParameters(NodeTransformer):
         if node.value.id == 'self':
             if not self.pars.has_key(node.attr):
                 self.pars[node.attr] = len(self.pars)
-            return ArrayRef("pars", self.pars[node.attr])
+            return ArrayRef(SymbolRef('pars'), Constant(self.pars[node.attr]))
         else:
             return self.generic_visit(node)
 
@@ -139,7 +142,7 @@ class NamesToArrays(NodeTransformer):
 
     
     def __init__(self, array_type, node_types, variables):
-        self.array_type = array_type
+        self.array_type = get_ctype(array_type._dtype_.type())
         self.node_types = node_types
         self.variables = variables
 
@@ -166,7 +169,12 @@ class NamesToArrays(NodeTransformer):
         return BinaryOp(
                 SymbolRef(node.value.id), 
                 Op.Add(),
-                str(node.slice.dims[0].value.n) + " * n_nodes"
+                #test = Lt(SymbolRef("node_it"), Constant( SymbolRef('n_nodes'))),
+                BinaryOp(
+                    Constant(node.slice.dims[0].value.n),
+                    Op.Mul(),
+                    SymbolRef('n_nodes')
+                    )
                 )
         
 
@@ -179,7 +187,8 @@ class NamesToArrays(NodeTransformer):
         if isinstance(node.value,ast.Subscript):
             # special case
             return Assign(
-                    SymbolRef(Deref(target), self.array_type._dtype_.type()),
+                    #Deref(SymbolRef(target, self.array_type)),
+                    SymbolRef(target, ctypes.POINTER( ctypes.c_double )()), 
                     self.visit(node.value)
                     )
         # looking for assignment derivative = numpy.array([...])
@@ -192,8 +201,19 @@ class NamesToArrays(NodeTransformer):
             assert(isinstance(var,ast.Name))
             new_nodes.append(
                     Assign(
-                        ArrayRef(target,str(i) + " * n_nodes + node_it" ),
-                        var.id
+                        ArrayRef(SymbolRef(target),
+                            #str(i) + " * n_nodes + node_it" ), # this is getting a little verbatim...
+                            BinaryOp(
+                                BinaryOp(
+                                    Constant(i),
+                                    Op.Mul(),
+                                    SymbolRef('n_nodes')
+                                    ),
+                                Op.Add(),
+                                SymbolRef('node_it')
+                                ),
+                            ),
+                        SymbolRef(var.id)
                         )
                     )
         return new_nodes
@@ -205,16 +225,17 @@ class NamesToArrays(NodeTransformer):
                 # C is selfless
                 return None
             else:
-                return SymbolRef(Deref(node.id), self.array_type._dtype_.type())
+                #return Deref(SymbolRef(node.id, self.array_type))
+                return SymbolRef(node.id, ctypes.POINTER(ctypes.c_double)() )
         type_variable = self.variables[node.id]
         if isinstance(node.parent, ast.Assign) and node.parent_field == 'targets':
             # local variable
             self.node_types[type_variable] = ("scalar",) # this may change for different target architectures
-            return SymbolRef(node.id, self.array_type._dtype_.type()) # danger of repeated declarations!
+            return SymbolRef(node.id, self.array_type) # danger of repeated declarations!
         elif self.node_types[type_variable] != ("scalar",): # sigh
             # TODO deal with modes... add a loop in case of nonsingular third dimension
             # TODO deal with slices, assumes singular 1. dimension (= 1 state/coupling variable)
-            return ArrayRef(node.id, "node_it" ) 
+            return ArrayRef(SymbolRef(node.id), SymbolRef("node_it") ) 
         else:
             return self.generic_visit(node)#SymbolRef(node.id, self.array_type())
 
@@ -228,9 +249,9 @@ class DfunDef(NodeTransformer):
 
     def visit_FunctionDef(self,node):
         node.args.args.append(
-                SymbolRef(
-                    Deref('pars'),
-                    c_double()
+                    SymbolRef(
+                    'pars',
+                    ctypes.POINTER(ctypes.c_double)()
                     )
                 )
         node.args.args.append(
@@ -246,9 +267,9 @@ class DfunDef(NodeTransformer):
                     )
                 )
         node.args.args.append(
-                SymbolRef(
-                    Deref('derivative'),
-                    c_double()
+                    SymbolRef(
+                    'derivative',
+                    ctypes.POINTER(ctypes.c_double)()
                     )
                 )
         #return node
@@ -598,6 +619,7 @@ class CModelDfun(LazySpecializedFunction):
                 c_int, #n_modes
                 arg_config["state_vars"] # derivative
                 )
+        print("FUNCTYPE", typesig._restype_, typesig._argtypes_)
 
         return fn.finalize("dfun", proj, typesig)
 

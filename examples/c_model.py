@@ -60,6 +60,31 @@ sim.configure()
 if sys.argv[1] == '1':
     specialize_model(sim)
 
-for _, _ in sim(simulation_length=2):
-    pass
+#for _, _ in sim(simulation_length=2):
+#    pass
 
+#Perform the simulation
+savg_data = []
+savg_time = []
+
+for _, savg in sim(simulation_length=2 ** 2):
+    if not savg is None:
+        savg_time.append(savg[0])
+        savg_data.append(savg[1])
+
+
+LOG.info("finished simulation")
+
+##----------------------------------------------------------------------------##
+##-               Plot pretty pictures of what we just did                   -##
+##----------------------------------------------------------------------------##
+
+##Make the lists numpy.arrays for easier use.
+#SAVG = numpy.array(savg_data)
+#
+##Plot region averaged time series
+#figure(3)
+#plot(savg_time, SAVG[:, 0, :, 0])
+#title("Region average")
+#
+#show()
