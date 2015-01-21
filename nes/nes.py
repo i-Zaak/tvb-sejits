@@ -509,14 +509,23 @@ def deps_to_types(deps, ret, sim):
             suc = sucs[0]
             dims_source = node_types[suc]
             dims = []
-            for i, dim in enumerate(node.slice.dims):
-                if isinstance(dim, ast.Index):
+            if isinstance(node.slice, ast.ExtSlice):
+                for i, dim in enumerate(node.slice.dims):
+                    if isinstance(dim, ast.Index):
+                        dims.append("scalar")
+                    elif isinstance(dim, ast.Slice):
+                        assert(dim.upper is None and  dim.lower is None and dim.step is None) # very talkative... 
+                        dims.append(dims_source[i])
+            else:
+                if isinstance(node.slice, ast.Index):
                     dims.append("scalar")
-                if isinstance(dim, ast.Slice):
-                    assert(dim.upper is None and  dim.lower is None and dim.step is None) # very talkative... 
+                elif isinstance(node.slice, ast.Slice):
+                    assert(node.slice.upper is None and  node.slice.lower is None and node.slice.step is None) # very talkative... 
                     dims.append(dims_source[i])
+                
 
-            nd_sub = len(node.slice.dims)
+            #nd_sub = len(node.slice.dims)
+            nd_sub = len(dims)
             nd_source = len(dims_source)
             for d in range( nd_sub, nd_source):
                 dims.append(dims_source[d]) 
