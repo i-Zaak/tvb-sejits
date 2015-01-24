@@ -4,6 +4,8 @@ Functions for runtime manipulation of TVB objects. Rename to something more intu
 
 from ctree.frontend import get_ast
 import nes
+import dfdag
+
 
 
 def specialize_model(sim):

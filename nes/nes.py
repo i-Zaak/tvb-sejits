@@ -23,6 +23,67 @@ import networkx as nx
 
 import numpy as np
 
+
+import dfdag
+
+
+class DFValueNodeCreator(NodeVisitor):
+    # we shall go backwards!
+    def __init__(self):
+        self._value_map = {}
+        self.applies = []
+        self.dfdag = None
+    
+    def createDAG(self):
+        values = list(set(self._value_map.values()))
+        
+        return dfdag.DFDAG(self.applies, values)
+
+    def visit_Assign(self,node):
+        self.generic_visit(node)
+        if len(node.targets ) >1:
+            raise NotImplementedError("Only single value return statements supported.")
+        target = node.targets[0]
+        tval = self._value_map[target]
+        s_app = self._value_map[node.value].source
+        s_app.output = tval #
+        tval.source = s_app
+        self._value_map[node.value] = tval
+        
+
+    def visit_BinOp(self, node):
+        self.generic_visit(node)
+        # TODO subscripts
+        inputs = []
+        for operand in [node.left, node.right]:
+            inputs.append( self._value_map[operand] )
+        
+        output = dfdag.Value()
+        self._value_map[node] = output
+        
+        routine = None #FIXME
+        app = dfdag.Apply(routine, inputs, output)
+        self.applies.append(app)
+            
+
+    def visit_Subscript(self, node):
+        raise NotImplementedError()
+
+    def visit_Name(self, node):
+        value = dfdag.Value()
+        self._value_map[node] = value
+
+
+
+def ast_to_dfdag(py_ast):
+    tree = monkeytrans.ParentNodeTransformer().visit(py_ast)
+    tree = RemoveComments().visit(py_ast)
+
+    dvn = DFValueNodeCreator()
+    dvn.visit(py_ast)
+    return dvn.createDAG()
+
+
 def MultiArrayRef(name, *idxs):
     """
     Given a string and a list of ints, produce the chain of
