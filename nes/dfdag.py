@@ -8,13 +8,12 @@ class DFDAG:
         self.applies = applies
         self.values = values
 
-    def nx_representation():
+    def nx_representation(self):
         dg = nx.DiGraph()
-        for apply in applies:
+        for apply in self.applies:
             for input in apply.inputs:
                 dg.add_edge(apply, input)
-            for output in apply.outputs:
-                dg.add_edge(output, apply)
+            dg.add_edge(apply.output, apply)
 
         return dg
 
@@ -34,7 +33,7 @@ class DFDAG:
 
 
 
-class Node:
+class Node(object):
     """
     There will be two basic types: functions and values. Edges are implicit.
     """
@@ -53,7 +52,6 @@ class Apply(Node):
         self.output = output
         output.source = self
 
-
 class Value(Node):
     """
     Represents single value (array, slice, constant). Once created, cannot be changed, can be reused.
@@ -64,7 +62,8 @@ class Value(Node):
         self.type = type
         self.source = source
 
-class Type:
+
+class Type(object):
     """
     Data value type base class
     """
@@ -74,29 +73,28 @@ class ScalarType(Type):
     pass
 
 class ArrayType(Type):
-    def __init__(self,shape):
+    def __init__(self,shape, slice=None):
         self.shape = shape
+        if slice is None:
+            self.slice = shape
+        else:
+            self.slice = slice
 
 
-class Routine:
+
+
+class Routine(object):
     """
     Metadata container for funcion declaration.
     """
 
-    def __init__(self, input_types, output_types):
+    def __init__(self, input_types, output_type):
         self.input_types = input_types
-        self.output_types = output_types
+        self.output_type = output_type
+
 
 class ElemwiseBinOp(Routine):
     pass
 
-class ScalarBinOp(Routine):
+class BinOp(Routine):
     pass
-
-class ScalarBroadcastOp(Routine):
-    pass
-
-class ArrayReducionOp(Routine):
-    pass
-
-

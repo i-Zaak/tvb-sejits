@@ -28,11 +28,23 @@ import dfdag
 
 
 class DFValueNodeCreator(NodeVisitor):
-    # we shall go backwards!
-    def __init__(self):
+    def _varname(self, node):
+        # strips subsripts if necessary
+        if isinstance(node, ast.Subscript):
+            return node.value.id
+        else:
+            return node.id
+    def __init__(self, shapes):
         self._value_map = {}
         self.applies = []
         self.dfdag = None
+        self._variable_map = {}
+        self.variable_types = {}
+        for var in shapes:
+            if shapes[var] == 'scalar':
+                self.variable_types[var] = dfdag.ScalarType()
+            else:
+                self.variable_types[var] = dfdag.ArrayType(shape=shapes[var])
     
     def createDAG(self):
         values = list(set(self._value_map.values()))
@@ -49,6 +61,7 @@ class DFValueNodeCreator(NodeVisitor):
         s_app.output = tval #
         tval.source = s_app
         self._value_map[node.value] = tval
+        self._variable_map[self._varname(target)] = tval 
         
 
     def visit_BinOp(self, node):
@@ -61,25 +74,47 @@ class DFValueNodeCreator(NodeVisitor):
         output = dfdag.Value()
         self._value_map[node] = output
         
-        routine = None #FIXME
+        routine = dfdag.BinOp([None],None) #TODO more specific here? Like operator mapping?
         app = dfdag.Apply(routine, inputs, output)
         self.applies.append(app)
             
 
     def visit_Subscript(self, node):
-        raise NotImplementedError()
+        self.generic_visit(node)
+        sval = self._value_map[node.value]
+        if isinstance(node.slice, ast.ExtSlice):
+            #expect things like x[0,:,2]
+            for i, dim in enumerate(node.slice.dims):
+                if isinstance(dim, ast.Index):
+                    sval.type.slice[i] = dim.value.n
+                else:
+                    assert( dim.lower is None and dim.upper is None and dim.step is None)
+                    pass
+
+        elif isinstance(node.slice, ast.Index):
+            # e.g. x[3]
+            sval.type.slice[0] = node.slice.value.n
+        else:
+            # do we need something like x[:] => ast.Slice?
+            raise NotImplementedError()
+
+        self._value_map[node] = sval
 
     def visit_Name(self, node):
-        value = dfdag.Value()
-        self._value_map[node] = value
+        if self._variable_map.has_key(node.id):
+            self._value_map[node] = self._variable_map[node.id]
+        else:
+            value = dfdag.Value(self.variable_types.get(node.id,None))
+            self._value_map[node] = value
+            self._variable_map[node.id] = value
 
 
 
-def ast_to_dfdag(py_ast):
+def ast_to_dfdag(py_ast, variable_shapes={}):
     tree = monkeytrans.ParentNodeTransformer().visit(py_ast)
     tree = RemoveComments().visit(py_ast)
 
-    dvn = DFValueNodeCreator()
+    dvn = DFValueNodeCreator(variable_shapes)
     dvn.visit(py_ast)
     return dvn.createDAG()
 
