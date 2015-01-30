@@ -34,6 +34,7 @@ class DFValueNodeCreator(NodeVisitor):
         self.dfdag = None
         self._variable_map = {}
         self._array_defs = {}
+        self.results = []
         for var in shapes:
             if shapes[var] == 'scalar':
                 self._variable_map[var] = dfdag.Value(type=dfdag.ScalarType())
@@ -46,7 +47,7 @@ class DFValueNodeCreator(NodeVisitor):
     def createDAG(self):
         values = list(set(self._value_map.values()))
         
-        return dfdag.DFDAG(self.applies, values)
+        return dfdag.DFDAG(self.applies, values, self.results)
 
     def visit_Assign(self,node):
         self.generic_visit(node)
@@ -151,8 +152,14 @@ class DFValueNodeCreator(NodeVisitor):
             self._variable_map[node.id] = value
 
     def visit_Num(self, node):
-            value = dfdag.Value(type=dfdag.Constant(node.n))
-            self._value_map[node] = value
+        value = dfdag.Value(type=dfdag.Constant(node.n))
+        self._value_map[node] = value
+
+    def visit_Return(self, node):
+        self.generic_visit(node)
+        sval = self._value_map[node.value]
+        self.results.append(sval)
+
 
 
 

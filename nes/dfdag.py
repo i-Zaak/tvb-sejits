@@ -4,9 +4,11 @@ class DFDAG:
     """
     Contains list of nodes, provides entry points for algorithms.
     """
-    def __init__(self, applies, values, entries=None, results=None):
+    def __init__(self, applies, values, results=[]):
         self.applies = applies
         self.values = values
+        self.results = results
+
 
     def nx_representation(self):
         dg = nx.DiGraph()

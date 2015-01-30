@@ -140,10 +140,19 @@ class AstParsingTest(unittest.TestCase):
         self.assertTrue(dfdag.applies[0].inputs[0].type.data.shape == ('cvar', 'nodes', 'modes'))
         self.assertTrue(dfdag.applies[0].inputs[0].type.data == dfdag.applies[0].inputs[0].type.data)
 
-
+    def return_test(self):
+        py_ast = ast.parse("return x + 1")
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'x': ('svar','nodes','modes')
+                    })
+        self.assertTrue(len(dfdag.results) == 1)
+        self.assertTrue(dfdag.results[0].type.shape == ('svar','nodes','modes'))
+        
         
     def sliced_assign_test(self):
-        py_ast = ast.parse("a[0] = x + c\na[1] = x - c\nb=a+1")
+        py_ast = ast.parse("a[0] = x + c\na[1] = x - c\nreturn a+1")
         dfdag = nes.ast_to_dfdag(
                 py_ast, 
                 variable_shapes = {
@@ -151,7 +160,10 @@ class AstParsingTest(unittest.TestCase):
                     'c': 'scalar',
                     'x': ('nodes','modes')
                     })
-        import ipdb; ipdb.set_trace()
+        self.assertTrue(len(dfdag.results) == 1)
+        self.assertTrue(dfdag.results[0].type.shape == ('cvar','nodes','modes'))
+        # how to test the synchronization properly?? 
+        # Maybe rolling from return statement?
 
 
        
