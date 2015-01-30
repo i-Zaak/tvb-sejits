@@ -40,6 +40,7 @@ class AstParsingTest(unittest.TestCase):
         dfdag_ex = DFDAG([mult,plus], [a,b,c,t1,x])
 
         self.assertTrue( graphs_isomorphic(dfdag, dfdag_ex) )
+    
 
     def multiline_test(self):
         py_ast = ast.parse("x = a + b\ny = x * b")
@@ -56,16 +57,80 @@ class AstParsingTest(unittest.TestCase):
         dfdag_ex = DFDAG([add1, add2], [a,b,x,y])
 
         self.assertTrue( graphs_isomorphic(dfdag, dfdag_ex) )
+    def assign_test(self):
+        py_ast = ast.parse("x = a\nb =  x + c")
+        dfdag = nes.ast_to_dfdag(py_ast)
+
+        
+        a = Value()
+        b = Value()
+        c = Value()
+        add1 = Apply(BinOp([None],None),[a,c], b) 
+
+        dfdag_ex = DFDAG([add1], [a,b,c])
+
+        self.assertTrue( graphs_isomorphic(dfdag, dfdag_ex) )
+
 
     def slice_test(self):
         py_ast = ast.parse("x[0]")
-        dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ['svar','nodes','modes']})
+        dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ('svar','nodes','modes')})
 
-        exp_shape = [0,'nodes','modes']
+        exp_shape = (0,'nodes','modes')
         self.assertTrue(dfdag.values[0].type.shape ==exp_shape)
 
     def slice_multidim_test(self):
         py_ast = ast.parse("x[0,:,2]")
-        dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ['svar','nodes','modes']})
+        dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ('svar','nodes','modes')})
 
         exp_shape = [0,'nodes',2]
+        self.assertTrue(dfdag.values[0].type.shape ==exp_shape)
+
+    def type_propagation_test(self):
+        py_ast = ast.parse("x = a  + b")
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'a': ('svar','nodes','modes'),
+                    'b': ('svar','nodes','modes'),
+                    })
+        
+        exp_shape = ('svar','nodes','modes')
+        self.assertTrue(dfdag.values[0].type.shape ==exp_shape)
+        self.assertTrue(dfdag.values[1].type.shape ==exp_shape)
+        self.assertTrue(dfdag.values[2].type.shape ==exp_shape)
+
+    def type_broadcasts_tests(self):
+        py_ast = ast.parse("x = a  + b")
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'a': ('svar','nodes','modes'),
+                    'b': 'scalar',
+                    })
+        exp_shape = ('svar','nodes','modes')
+        self.assertTrue(dfdag.applies[0].output.type.shape == exp_shape)
+    def type_scalar_tests(self):
+        py_ast = ast.parse("x = a  + b")
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'a': 'scalar',
+                    'b': 'scalar',
+                    })
+        self.assertTrue(isinstance(dfdag.applies[0].output.type, ScalarType))
+
+    def type_slicing_test(self):
+        py_ast = ast.parse("a = c[0]\nb = c[1]\nx = a + b")
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'c': ('cvar','nodes','modes'),
+                    'x': ('nodes','modes')
+                    })
+        
+        print dfdag.to_dot() # replace with assert to smthng
+        import ipdb; ipdb.set_trace()
+
+        
+       

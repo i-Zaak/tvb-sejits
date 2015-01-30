@@ -28,23 +28,20 @@ import dfdag
 
 
 class DFValueNodeCreator(NodeVisitor):
-    def _varname(self, node):
-        # strips subsripts if necessary
-        if isinstance(node, ast.Subscript):
-            return node.value.id
-        else:
-            return node.id
     def __init__(self, shapes):
         self._value_map = {}
         self.applies = []
         self.dfdag = None
         self._variable_map = {}
-        self.variable_types = {}
+        self._array_defs = {}
         for var in shapes:
             if shapes[var] == 'scalar':
-                self.variable_types[var] = dfdag.ScalarType()
+                self._variable_map[var] = dfdag.Value(type=dfdag.ScalarType())
             else:
-                self.variable_types[var] = dfdag.ArrayType(shape=shapes[var])
+                data = dfdag.ArrayData(shape=shapes[var]) # 
+                value = dfdag.Value(type=dfdag.ArrayType(data=data))
+                self._variable_map[var] = value
+                self._array_defs[data] = [value]
     
     def createDAG(self):
         values = list(set(self._value_map.values()))
@@ -53,16 +50,49 @@ class DFValueNodeCreator(NodeVisitor):
 
     def visit_Assign(self,node):
         self.generic_visit(node)
-        if len(node.targets ) >1:
+        if len(node.targets ) > 1:
             raise NotImplementedError("Only single value return statements supported.")
         target = node.targets[0]
-        tval = self._value_map[target]
-        s_app = self._value_map[node.value].source
-        s_app.output = tval #
-        tval.source = s_app
-        self._value_map[node.value] = tval
-        self._variable_map[self._varname(target)] = tval 
+        #tval = self._value_map[target]
+        #s_app = self._value_map[node.value].source
+        #if s_app is not None:
+        #    if isinstance(tval.type, dfdag.ArrayType):
+        #        tval.type = tval.type.broadcast(s_app.output.type)
+        #    else:
+        #        tval.type = s_app.output.type
+        #    s_app.output = tval 
+        #    tval.source = s_app
+        #else:
+        #    tval = self._value_map[node.value]
+        #self._value_map[node.value] = tval
+        #self._variable_map[self._varname(target)] = tval 
+
+        # what we get from rhs
+        val = self._value_map[node.value]
+        # broadcast or kill?
+        if isinstance(target, ast.Subscript):
+            # possibly incomplete kill
+            self._array_defs[val.type.data].append(val)
+            syncval = dfdag.Value(type=val.type)
+            routine = dfdag.Synchronize()
+            inputs = self._array_defs[val.type.data]
+            sync = dfdag.Apply(routine, inputs, syncval)
+            self._value_map[target] = syncval
+            self._variable_map[target.value.id] = syncval
+        elif isinstance(target, ast.Name):
+            # complete kill
+            if isinstance(val, dfdag.ArrayType):
+                self._array_defs[val.type.data] = [val]
+            self._variable_map[target.id] = val
+            self._value_map[target] = val
+        else:
+            # E.g. no attributes. Not now, not later.
+            raise NotImplementedError()
+
         
+    def visit_AugAssign(self, node):
+        # inplace operators, implement later if needed
+        raise NotImplementedError()
 
     def visit_BinOp(self, node):
         self.generic_visit(node)
@@ -70,8 +100,18 @@ class DFValueNodeCreator(NodeVisitor):
         inputs = []
         for operand in [node.left, node.right]:
             inputs.append( self._value_map[operand] )
-        
+
         output = dfdag.Value()
+        if isinstance(inputs[0].type, dfdag.ArrayType):
+            out_type = inputs[0].type.broadcast_with(inputs[1].type)
+            self._array_defs[out_type.data] = [output]
+        elif isinstance(inputs[1].type, dfdag.ArrayType): 
+            out_type = inputs[1].type.broadcast_with(inputs[0].type)
+            self._array_defs[out_type.data] = [output]
+        else:
+            out_type = dfdag.ScalarType()
+
+        output.type=out_type
         self._value_map[node] = output
         
         routine = dfdag.BinOp([None],None) #TODO more specific here? Like operator mapping?
@@ -80,31 +120,41 @@ class DFValueNodeCreator(NodeVisitor):
             
 
     def visit_Subscript(self, node):
+        #expects the subscripted value to have known type
         self.generic_visit(node)
+ 
         sval = self._value_map[node.value]
+        slice_shape = list(sval.type.shape)
+        
         if isinstance(node.slice, ast.ExtSlice):
             #expect things like x[0,:,2]
             for i, dim in enumerate(node.slice.dims):
                 if isinstance(dim, ast.Index):
-                    sval.type.slice[i] = dim.value.n
+                    slice_shape[i] = dim.value.n
                 else:
                     assert( dim.lower is None and dim.upper is None and dim.step is None)
                     pass
 
         elif isinstance(node.slice, ast.Index):
             # e.g. x[3]
-            sval.type.slice[0] = node.slice.value.n
+            slice_shape[0] = node.slice.value.n
         else:
             # do we need something like x[:] => ast.Slice?
             raise NotImplementedError()
+        slice = tuple(slice_shape)
 
-        self._value_map[node] = sval
+        newval = dfdag.Value()
+        newval.type = dfdag.ArrayType( data = sval.type.data, slice=slice)
+        newval.type.data = sval.type.data
+        self._value_map[node] = newval
+
 
     def visit_Name(self, node):
         if self._variable_map.has_key(node.id):
             self._value_map[node] = self._variable_map[node.id]
         else:
-            value = dfdag.Value(self.variable_types.get(node.id,None))
+            #value = dfdag.Value(self.variable_types.get(node.id,None))
+            value = dfdag.Value(None)
             self._value_map[node] = value
             self._variable_map[node.id] = value
 

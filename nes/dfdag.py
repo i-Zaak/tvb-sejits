@@ -51,6 +51,8 @@ class Apply(Node):
         self.inputs = inputs
         self.output = output
         output.source = self
+    def __repr__(self):
+        return "<Apply: " + str(self.routine) + ">"
 
 class Value(Node):
     """
@@ -61,6 +63,10 @@ class Value(Node):
         # TODO check consitency of type vs source.routine/source_index later
         self.type = type
         self.source = source
+    
+    def __repr__(self):
+        return "<Value: " + str(self.type) + ">"
+
 
 
 class Type(object):
@@ -72,29 +78,83 @@ class Type(object):
 class ScalarType(Type):
     pass
 
+class Constant(Type):
+    pass
+
 class ArrayType(Type):
-    def __init__(self,shape, slice=None):
-        self.shape = shape
+    
+    def _broadcast_shapes(self, shape1, shape2):
+        if len(shape1) < len(shape2):
+            shape = list(shape2)
+        elif len(shape1) > len(shape2):
+            shape = list(shape1)
+        else:
+            shape = []
+            for i in reversed(range(len(shape1))):
+                if isinstance(shape1[i], str):
+                    shape.append(shape1[i])
+                elif isinstance(shape2[i], str):
+                    shape.append(shape2[i])
+                # we discard dimensions where both are 1
+            shape.reverse()
+            shape = tuple(shape)
+        return shape
+
+    @property
+    def shape(self):
+        if self.slice is None:
+            return self.data.shape
+        else:
+            return self._broadcast_shapes(self.data.shape,self.slice)
+
+    @shape.setter
+    def shape(self,shape):
+        # just don't
+        raise RuntimeError() 
+
+    def __init__(self, data, slice=None ):
+        self.data = data # memory allocation
         if slice is None:
-            self.slice = shape
+            self.slice = self.data.shape
         else:
             self.slice = slice
 
+    def broadcast_with(self, other):
+        # correctness of the broadcast assumed
+        if isinstance(other, ScalarType):
+            shape =  self.shape
+        else:
+            assert( isinstance(other, ArrayType))
+            shape = self._broadcast_shapes(self.shape, other.shape)
+        return ArrayType( data=ArrayData(shape))
 
+    def __repr__(self):
+        return "<ArrayType: shape:" + str(self.shape) + " | slice:" + str(self.slice) +" | data:" + str(self.data) +">"
+
+class ArrayData(object):
+    """
+    Represents pointer to array data.
+    """
+    def __init__(self, shape):
+        self.shape = shape
+
+    def __repr__(self):
+        return "<ArrayData: " + str(hex(id(self))) + " " + str(self.shape) + ">"
 
 
 class Routine(object):
     """
     Metadata container for funcion declaration.
     """
+    pass
 
+
+
+class BinOp(Routine):
     def __init__(self, input_types, output_type):
         self.input_types = input_types
         self.output_type = output_type
 
-
-class ElemwiseBinOp(Routine):
-    pass
-
-class BinOp(Routine):
+class Synchronize(Routine):
+    # array access synchronization (sliced access)
     pass
