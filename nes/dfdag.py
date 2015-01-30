@@ -78,16 +78,17 @@ class Type(object):
 class ScalarType(Type):
     pass
 
-class Constant(Type):
-    pass
+class Constant(ScalarType):
+    def __init__(self, number):
+        self.number = number
 
 class ArrayType(Type):
     
     def _broadcast_shapes(self, shape1, shape2):
         if len(shape1) < len(shape2):
-            shape = list(shape2)
+            shape = shape2
         elif len(shape1) > len(shape2):
-            shape = list(shape1)
+            shape = shape1
         else:
             shape = []
             for i in reversed(range(len(shape1))):
@@ -100,12 +101,23 @@ class ArrayType(Type):
             shape = tuple(shape)
         return shape
 
+    def _slice_shape(self, shape, slice):
+        newshape = []
+        for i in reversed(range(len(shape))):
+            if isinstance(slice[i], str): #shouldnt we go for ":" notation?
+                newshape.append(shape[i])
+            # we discard dimensions where slice is integer
+        newshape.reverse()
+        newshape = tuple(newshape)
+        return newshape
+
+
     @property
     def shape(self):
         if self.slice is None:
             return self.data.shape
         else:
-            return self._broadcast_shapes(self.data.shape,self.slice)
+            return self._slice_shape(self.data.shape,self.slice)
 
     @shape.setter
     def shape(self,shape):

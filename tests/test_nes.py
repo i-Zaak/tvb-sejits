@@ -24,7 +24,7 @@ def graphs_isomorphic(dfdag1, dfdag2):
 
 class AstParsingTest(unittest.TestCase):
     def simple_test(self):
-        py_ast = ast.parse("x = a + b * c")
+        py_ast = ast.parse("x = 2 + b * c")
         dfdag = nes.ast_to_dfdag(py_ast)
 
         
@@ -76,15 +76,17 @@ class AstParsingTest(unittest.TestCase):
         py_ast = ast.parse("x[0]")
         dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ('svar','nodes','modes')})
 
-        exp_shape = (0,'nodes','modes')
-        self.assertTrue(dfdag.values[0].type.shape ==exp_shape)
+        exp_shape = ('nodes','modes')
+        self.assertTrue(dfdag.values[0].type.shape ==exp_shape or 
+                dfdag.values[1].type.shape ==exp_shape)
 
     def slice_multidim_test(self):
         py_ast = ast.parse("x[0,:,2]")
         dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ('svar','nodes','modes')})
 
-        exp_shape = [0,'nodes',2]
-        self.assertTrue(dfdag.values[0].type.shape ==exp_shape)
+        exp_shape = ('nodes',)
+        self.assertTrue(dfdag.values[0].type.shape ==exp_shape or 
+                dfdag.values[1].type.shape ==exp_shape)
 
     def type_propagation_test(self):
         py_ast = ast.parse("x = a  + b")
@@ -129,8 +131,27 @@ class AstParsingTest(unittest.TestCase):
                     'x': ('nodes','modes')
                     })
         
-        print dfdag.to_dot() # replace with assert to smthng
-        import ipdb; ipdb.set_trace()
+        self.assertTrue(dfdag.applies[0].output.type.shape == ('nodes', 'modes'))
+        self.assertTrue(dfdag.applies[0].output.type.slice == ('nodes', 'modes'))
+        self.assertTrue(dfdag.applies[0].output.type.data.shape == ('nodes', 'modes'))
+
+        self.assertTrue(dfdag.applies[0].inputs[0].type.shape == ('nodes', 'modes'))
+        self.assertTrue(dfdag.applies[0].inputs[0].type.slice == (0, 'nodes', 'modes'))
+        self.assertTrue(dfdag.applies[0].inputs[0].type.data.shape == ('cvar', 'nodes', 'modes'))
+        self.assertTrue(dfdag.applies[0].inputs[0].type.data == dfdag.applies[0].inputs[0].type.data)
+
 
         
+    def sliced_assign_test(self):
+        py_ast = ast.parse("a[0] = x + c\na[1] = x - c\nb=a+1")
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'a': ('cvar','nodes','modes'),
+                    'c': 'scalar',
+                    'x': ('nodes','modes')
+                    })
+        import ipdb; ipdb.set_trace()
+
+
        

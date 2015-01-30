@@ -53,31 +53,21 @@ class DFValueNodeCreator(NodeVisitor):
         if len(node.targets ) > 1:
             raise NotImplementedError("Only single value return statements supported.")
         target = node.targets[0]
-        #tval = self._value_map[target]
-        #s_app = self._value_map[node.value].source
-        #if s_app is not None:
-        #    if isinstance(tval.type, dfdag.ArrayType):
-        #        tval.type = tval.type.broadcast(s_app.output.type)
-        #    else:
-        #        tval.type = s_app.output.type
-        #    s_app.output = tval 
-        #    tval.source = s_app
-        #else:
-        #    tval = self._value_map[node.value]
-        #self._value_map[node.value] = tval
-        #self._variable_map[self._varname(target)] = tval 
 
         # what we get from rhs
         val = self._value_map[node.value]
         # broadcast or kill?
         if isinstance(target, ast.Subscript):
             # possibly incomplete kill
-            self._array_defs[val.type.data].append(val)
-            syncval = dfdag.Value(type=val.type)
+            varval = self._variable_map[target.value.id]
+            syncval = dfdag.Value(type=varval.type)
             routine = dfdag.Synchronize()
-            inputs = self._array_defs[val.type.data]
+            inputs = list(self._array_defs[varval.type.data])
+            inputs.append(val)
+            self._array_defs[varval.type.data].append(syncval)
             sync = dfdag.Apply(routine, inputs, syncval)
-            self._value_map[target] = syncval
+            self.applies.append(sync)
+            self._value_map[node] = syncval
             self._variable_map[target.value.id] = syncval
         elif isinstance(target, ast.Name):
             # complete kill
@@ -121,7 +111,9 @@ class DFValueNodeCreator(NodeVisitor):
 
     def visit_Subscript(self, node):
         #expects the subscripted value to have known type
-        self.generic_visit(node)
+
+        # no expressions allowed in the slice
+        self.visit(node.value)
  
         sval = self._value_map[node.value]
         slice_shape = list(sval.type.shape)
@@ -157,6 +149,11 @@ class DFValueNodeCreator(NodeVisitor):
             value = dfdag.Value(None)
             self._value_map[node] = value
             self._variable_map[node.id] = value
+
+    def visit_Num(self, node):
+            value = dfdag.Value(type=dfdag.Constant(node.n))
+            self._value_map[node] = value
+
 
 
 
