@@ -31,15 +31,13 @@ class DFDAG:
         d_str += "}\n"
         return d_str
 
-    
-
-
 
 class Node(object):
     """
-    There will be two basic types: functions and values. Edges are implicit.
+    There will be two basic types: functions and values. Edges are implicit. Function ``depends`` returns iterator over targets of outgoing edges (for DAG walks) and should be implemented by all nodes in the graph.
     """
-    pass
+    def depends(self):
+        raise NotImplementedError()
 
 
 class Apply(Node):
@@ -53,6 +51,10 @@ class Apply(Node):
         self.inputs = inputs
         self.output = output
         output.source = self
+
+    def depends(self):
+       return self.inputs
+
     def __repr__(self):
         return "<Apply: " + str(self.routine) + ">"
 
@@ -65,6 +67,12 @@ class Value(Node):
         # TODO check consitency of type vs source.routine/source_index later
         self.type = type
         self.source = source
+
+    def depends(self):
+        if self.source is None:
+            return []
+        else:
+            return [self.source]
     
     def __repr__(self):
         return "<Value: " + str(self.type) + ">"
@@ -165,10 +173,23 @@ class Routine(object):
 
 
 class BinOp(Routine):
-    def __init__(self, input_types, output_type):
+    # note: output type determines function mapping dimension
+    def __init__(self, operator, input_types, output_type):
         self.input_types = input_types
-        self.output_type = output_type
+        self.output_type = output_type 
+        self.operator = operator
 
 class Synchronize(Routine):
     # array access synchronization (sliced access)
     pass
+
+
+
+
+
+class LoopBlock(object):
+    def __init__(self, dim):
+        self.dim = dim # name of loop dimension
+        self.values = set() 
+
+

@@ -33,9 +33,9 @@ class AstParsingTest(unittest.TestCase):
         c = Value()
 
         t1 = Value()
-        mult = Apply(BinOp([None],None),[b,c], t1) #no types for now
+        mult = Apply(BinOp(None,[None],None),[b,c], t1) #no types for now
         x = Value()
-        plus = Apply(BinOp([None],None),[a, t1], x) #no types for now
+        plus = Apply(BinOp(None,[None],None),[a, t1], x) #no types for now
 
         dfdag_ex = DFDAG([mult,plus], [a,b,c,t1,x])
 
@@ -51,8 +51,8 @@ class AstParsingTest(unittest.TestCase):
 
         x = Value()
         y = Value()
-        add1 = Apply(BinOp([None],None),[a,b], x) 
-        add2 = Apply(BinOp([None],None),[x,b], y) 
+        add1 = Apply(BinOp(None,[None],None),[a,b], x) 
+        add2 = Apply(BinOp(None,[None],None),[x,b], y) 
 
         dfdag_ex = DFDAG([add1, add2], [a,b,x,y])
 
@@ -65,7 +65,7 @@ class AstParsingTest(unittest.TestCase):
         a = Value()
         b = Value()
         c = Value()
-        add1 = Apply(BinOp([None],None),[a,c], b) 
+        add1 = Apply(BinOp(None, [None],None),[a,c], b) 
 
         dfdag_ex = DFDAG([add1], [a,b,c])
 
@@ -101,6 +101,10 @@ class AstParsingTest(unittest.TestCase):
         self.assertTrue(dfdag.values[0].type.shape ==exp_shape)
         self.assertTrue(dfdag.values[1].type.shape ==exp_shape)
         self.assertTrue(dfdag.values[2].type.shape ==exp_shape)
+        self.assertTrue(isinstance(dfdag.applies[0].routine.operator, ast.Add))
+        self.assertTrue(dfdag.applies[0].routine.output_type.shape == exp_shape)
+        self.assertTrue(dfdag.applies[0].routine.input_types[0].shape == exp_shape)
+        self.assertTrue(dfdag.applies[0].routine.input_types[1].shape == exp_shape)
 
     def type_broadcasts_tests(self):
         py_ast = ast.parse("x = a  + b")
@@ -163,7 +167,79 @@ class AstParsingTest(unittest.TestCase):
         self.assertTrue(len(dfdag.results) == 1)
         self.assertTrue(dfdag.results[0].type.shape == ('cvar','nodes','modes'))
         # how to test the synchronization properly?? 
-        # Maybe rolling from return statement?
+        # Maybe rolling upwards from return statement?
+
+class VisitorTest(unittest.TestCase):
+    def walker_test(self):
+        class TestWalker(nes.DFDAGVisitor):
+            def __init__(self):
+                self.walk = []
+            def visit_Apply(self, node):
+                self.walk.append(node.routine)
+                self.generic_visit(node) # don't forget these!
+            def visit_Value(self,node):
+                self.walk.append(node.type)
+                self.generic_visit(node) # don't forget these!
+
+        tw = TestWalker()
+
+        a = Value(type=ScalarType())
+        b = Value(type=ScalarType())
+        c = Value(type=ScalarType())
+
+        plus = Apply(
+                BinOp(
+                    ast.Add(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                    ),
+                [a, b], 
+                c)
+
+        dfdag = DFDAG([plus], [a,b,c])
+
+        tw.visit(c)
+
+        self.assertTrue(tw.walk[0] == c.type)
+        self.assertTrue(tw.walk[1] == plus.routine)
+        self.assertTrue(tw.walk[2] == a.type)
+        self.assertTrue(tw.walk[3] == b.type)
 
 
-       
+
+
+
+class CodeGenTest(unittest.TestCase):
+    def value_collector_test(self):
+        self.assertTrue(False) # write me
+
+    def bfs_visitor_test(self):
+        self.assertTrue(False) # write me
+
+    def simple_ctree_test(self):
+        a = Value(type=ScalarType())
+        b = Value(type=ScalarType())
+        c = Value(type=ScalarType())
+
+        t1 = Value()
+        mult = Apply(
+                BinOp(ast.Mult(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                ),
+                [b,c], 
+                t1)
+        x = Value()
+        plus = Apply(
+                BinOp(
+                    ast.Add(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                    ),
+                [a, t1], 
+                x)
+
+        dfdag = DFDAG([mult,plus], [a,b,c,t1,x])
+        nes.dfdag_to_ctree(dfdag, None)
+
+
