@@ -190,6 +190,6 @@ class Synchronize(Routine):
 class LoopBlock(object):
     def __init__(self, dim):
         self.dim = dim # name of loop dimension
-        self.values = set() 
+        self.applies = set() 
 
 

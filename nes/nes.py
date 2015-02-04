@@ -184,7 +184,7 @@ class DFDAGVisitor(ast.NodeVisitor):
 
 class BFSVisitor(ast.NodeVisitor):
     def __init__(self):
-        self._queue = [] # poor mans queues: use pop(0) 
+        self._queue = [] # poor mans queues: uses pop(0) and append(node)
         self._visited = set() # again, DAG is not a tree
 
     def generic_visit(self,node):
@@ -192,33 +192,27 @@ class BFSVisitor(ast.NodeVisitor):
             self._visited.add(node)
             for dep in node.depends():
                 self._queue.append(dep)
-            self.visit(self._queue.pop(0))
         else:
             pass # been there, done that
+        if len(self._queue) > 0:
+            self.visit(self._queue.pop(0))
 
-class Linearizator(BFSVisitor):
-    def __init__(self, applies):
-        # linearize the nodes in applies
-        self.applies = set(applies) 
-        self.ordering = []
-        super(Linearizator,self).__init__()
+def linearize(dfdag):
+    dag = dfdag.nx_representation()
+    return nx.topological_sort(dag)
 
-    def visit_Apply(self,node):
-        if node in self.applies:
-            self.ordering.append(node)
-        self.generic_visit(node)
-
-class ValueCollector(DFDAGVisitor):
-    def __init__(self, forbidden):
-        self._forbidden = set(forbidden)
-        self.collected = set()
+class SubGraphCollector(DFDAGVisitor):
+    def __init__(self):
+        self.values = set()
+        self.applies = set()
+        super(SubGraphCollector,self).__init__()
 
     def visit_Value(self, node):
-        if node not in self.collected and node not in self._forbidden:
-            self.collected.add(node)
-            self.generic_visit(node)
-        else:
-            pass # not going any further
+        self.generic_visit(node)
+        self.values.add(node)
+    def visit_Apply(self, node):
+        self.generic_visit(node)
+        self.applies.add(node)
 
 class LoopBlocker(BFSVisitor): 
     """
@@ -233,12 +227,12 @@ class LoopBlocker(BFSVisitor):
 
     def visit_Value(self, node):
         if isinstance(node.type, dfdag.ArrayType) and self.dim in node.type.shape:
-            if node not in self._blocked:
+            if node.source is not None and node.source not in self._blocked:
                 # engage blocking
                 lbg = LoopBlockGrower(self.dim, set(self._blocked))
                 lbg.visit(node)
                 self.loop_blocks.append(lbg.loop_block)
-                self._blocked.update(lbg.loop_block.values)
+                self._blocked.update(lbg.loop_block.applies)
             else:
                 pass # already part of block, passing by
         else:
@@ -251,26 +245,27 @@ class LoopBlockGrower(BFSVisitor):
     """
     Give me seed, I'll grow you a block.
     """
-    def __init__(self, dimension, forbidden):
+    def __init__(self, dimension, forbidden=set()):
         self.dim = dimension
-        self._forbidden = forbidden
-        self.loop_block = dfdag.LoopBlock()
+        self._forbidden = set(forbidden)
+        self.loop_block = dfdag.LoopBlock(self.dim)
         super(LoopBlockGrower,self).__init__()
 
     def visit_Value(self,node):
         if node not in self._forbidden:
             if isinstance(node.type, dfdag.ArrayType) and self.dim in node.type.shape:
-                # previously unvisited, not forbidden, safe to add
-                self.loop_block.values.add(node)
-                self.generic_visit(node)
+                # previously unvisited, not forbidden, safe to add source
+                if node.source is not None:
+                    self.loop_block.applies.add(node.source)
             else:
-                # invariant, forbid underlaying DAG
-                vc = ValueCollector(self._forbidden)
-                vc.visit(node)
-                self._forbidden.update(vc.collected)
+                # invariant, forbid underlaying DAG (remove already placed applies?)
+                sg = SubGraphCollector()
+                sg.visit(node)
+                self._forbidden.update(sg.values)
+                self.loop_block.applies.difference_update(sg.applies)
         else:
             pass # you shall not pass
-        self.generic_visit(node)
+        self.generic_visit(node) # hmm...
 
 
         
@@ -294,6 +289,21 @@ def dfdag_to_ctree(dfdag, result):
 
 def loop_block_lin(dfdag, loop_order):
     pass
+
+
+
+
+
+
+
+# cut and remove here
+# -----------------------------
+
+
+
+
+
+
 
 def MultiArrayRef(name, *idxs):
     """

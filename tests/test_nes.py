@@ -211,9 +211,6 @@ class VisitorTest(unittest.TestCase):
 
 
 class CodeGenTest(unittest.TestCase):
-    def value_collector_test(self):
-        self.assertTrue(False) # write me
-
     def bfs_visitor_test(self):
         """
              d-+  f-+  +---------+
@@ -267,39 +264,173 @@ class CodeGenTest(unittest.TestCase):
                 [i,h], 
                 j)
         dfdag = DFDAG([a1, a2, a3, a4, a5], [a,b,c,d,e,f,g,h,i,j])
-        lin = nes.Linearizator(dfdag.applies)
-        lin.visit(j)
-        self.assertTrue(lin.ordering[0] == a5)
-        self.assertTrue(lin.ordering.index(a2) > lin.ordering.index(a3))
-        self.assertTrue(lin.ordering.index(a1) > lin.ordering.index(a4))
-        self.assertTrue(lin.ordering.index(a1) > lin.ordering.index(a2))
-        self.assertTrue(lin.ordering.index(a1) > lin.ordering.index(a3))
+        lin = nes.linearize(dfdag)
+        self.assertTrue(lin[1] == a5)
+        self.assertTrue(lin.index(a2) > lin.index(a3))
+        self.assertTrue(lin.index(a1) > lin.index(a4))
+        self.assertTrue(lin.index(a1) > lin.index(a2))
+        self.assertTrue(lin.index(a1) > lin.index(a3))
+    
+    def loop_block_grower_test(self):
+        """
+        digraph{
+          op1->a
+          op1->b
+          op2->c
+          op2->d
+          op3->e->op1
+          op3->f->op2
+          dot->f
+          op4->h
+          op4->i->op3
+          op5->j->op4
+          op5->k->dot
+        }
+        """
+        a = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        b = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        c = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        d = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        e = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        f = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        g = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        h = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        i = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        j = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        k = Value(type=ArrayType(data=ArrayData(shape=("nodes",)))) 
+        l = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        op1 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [a,b], 
+                e)
+        op2 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [c,d], 
+                f)
+        op3 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [e,f], 
+                i)
+        op4 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [h,i], 
+                j)
+        op5 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [j,k], 
+                l)
+        dot = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes",)))
+                ),
+                [f,g], 
+                k)
+        dfdag = DFDAG([op1, op2, op3, op4, op5, dot],[a, b, c, d, e, f, g, h, i, j,k,l ])
+        lbg = nes.LoopBlockGrower(dimension="nodes")
+        lbg.visit(l)
+        self.assertTrue(lbg.loop_block.applies == set([op1, op2, op3, op4, op5,dot]))
+        lbg = nes.LoopBlockGrower(dimension="modes")
+        lbg.visit(l)
+        self.assertTrue(lbg.loop_block.applies == set([op1, op3, op4, op5 ]))
 
 
-    def simple_ctree_test(self):
-        a = Value(type=ScalarType())
-        b = Value(type=ScalarType())
-        c = Value(type=ScalarType())
 
-        t1 = Value()
-        mult = Apply(
-                BinOp(ast.Mult(),
-                    [ScalarType(), ScalarType()],
-                    ScalarType()
+    def loop_block_test(self):
+        """
+        digraph {
+          d->op1->a
+          op1->b
+          e->op2->b
+          op2->c
+          f->red->d
+          red->e
+          h->op3->f
+          op3->g
+          j->op4->h
+          op4->i
+        }
+        """
+        a = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        b = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        c = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        d = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        e = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        f = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
+        g = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        h = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        i = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        j = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        op1 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [a,b], 
+                d)
+        op2 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
                 ),
                 [b,c], 
-                t1)
-        x = Value()
-        plus = Apply(
-                BinOp(
-                    ast.Add(),
-                    [ScalarType(), ScalarType()],
-                    ScalarType()
-                    ),
-                [a, t1], 
-                x)
+                e)
+        op3 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [f,g], 
+                h)
+        op4 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes","modes")))
+                ),
+                [h,i], 
+                j)
+        dot = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))],
+                    ArrayType(data=ArrayData(shape=("nodes",)))
+                ),
+                [d,e], 
+                f)
+        dfdag = DFDAG([op1, op2, op3, op4, dot],[a, b, c, d, e, f, g, h, i, j])
+        lb = nes.LoopBlocker(dimension="modes")
+        lb.visit(j)
+        self.assertTrue(len(lb.loop_blocks) == 3) # fusing only consecutive expressions for now
+        self.assertTrue(lb.loop_blocks[0].applies == set([op4, op3]))
+        self.assertTrue( (lb.loop_blocks[1].applies == set([op1]) and lb.loop_blocks[2].applies == set([op2]) ) or (lb.loop_blocks[2].applies == set([op1]) and lb.loop_blocks[1].applies == set([op2])) ) # quite ugly :(
 
-        dfdag = DFDAG([mult,plus], [a,b,c,t1,x])
-        nes.dfdag_to_ctree(dfdag, None)
-
+    def simple_ctree_test(self):
+        self.assertTrue(False) # write me
+    def value_collector_test(self):
+        self.assertTrue(False) # write me
 
