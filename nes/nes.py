@@ -170,7 +170,7 @@ class DFDAGVisitor(ast.NodeVisitor):
     """
     Walks the graph upwards following the dependencies.
     """
-    def __init__(self, node):
+    def __init__(self):
         self._visited = set() # DAG is not a tree
 
     def generic_visit(self, node):
@@ -187,7 +187,7 @@ class BFSVisitor(ast.NodeVisitor):
         self._queue = [] # poor mans queues: use pop(0) 
         self._visited = set() # again, DAG is not a tree
 
-    def generic_visit():
+    def generic_visit(self,node):
         if node not in self._visited:
             self._visited.add(node)
             for dep in node.depends():
@@ -198,15 +198,15 @@ class BFSVisitor(ast.NodeVisitor):
 
 class Linearizator(BFSVisitor):
     def __init__(self, applies):
-        self.applies = set(applies) # used to constraint to subgraph
+        # linearize the nodes in applies
+        self.applies = set(applies) 
         self.ordering = []
+        super(Linearizator,self).__init__()
 
     def visit_Apply(self,node):
-        if node in applies:
+        if node in self.applies:
             self.ordering.append(node)
-            self.generic_visit(node)
-        else:
-            pass 
+        self.generic_visit(node)
 
 class ValueCollector(DFDAGVisitor):
     def __init__(self, forbidden):
@@ -229,6 +229,7 @@ class LoopBlocker(BFSVisitor):
         self.dim = dimension
         self.loop_blocks = []
         self._blocked = set()
+        super(LoopBlocker,self).__init__()
 
     def visit_Value(self, node):
         if isinstance(node.type, dfdag.ArrayType) and self.dim in node.type.shape:
@@ -254,6 +255,7 @@ class LoopBlockGrower(BFSVisitor):
         self.dim = dimension
         self._forbidden = forbidden
         self.loop_block = dfdag.LoopBlock()
+        super(LoopBlockGrower,self).__init__()
 
     def visit_Value(self,node):
         if node not in self._forbidden:

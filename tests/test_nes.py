@@ -174,6 +174,7 @@ class VisitorTest(unittest.TestCase):
         class TestWalker(nes.DFDAGVisitor):
             def __init__(self):
                 self.walk = []
+                super(TestWalker,self).__init__()
             def visit_Apply(self, node):
                 self.walk.append(node.routine)
                 self.generic_visit(node) # don't forget these!
@@ -214,7 +215,66 @@ class CodeGenTest(unittest.TestCase):
         self.assertTrue(False) # write me
 
     def bfs_visitor_test(self):
-        self.assertTrue(False) # write me
+        """
+             d-+  f-+  +---------+
+        a-a1-c-a2-e-a3-h  g-a4-i-a5-j
+        b-+  +--------------+
+        """
+        a = Value(type=ScalarType())
+        b = Value(type=ScalarType())
+        c = Value(type=ScalarType())
+        d = Value(type=ScalarType())
+        e = Value(type=ScalarType())
+        f = Value(type=ScalarType())
+        g = Value(type=ScalarType())
+        h = Value(type=ScalarType())
+        i = Value(type=ScalarType())
+        j = Value(type=ScalarType())
+
+        a1 = Apply(
+                BinOp(ast.Add(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                ),
+                [a,b], 
+                c)
+        a2 = Apply(
+                BinOp(ast.Add(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                ),
+                [c,d], 
+                e)
+        a3 = Apply(
+                BinOp(ast.Add(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                ),
+                [e,f], 
+                h)
+        a4 = Apply(
+                BinOp(ast.Add(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                ),
+                [g,c], 
+                i)
+        a5 = Apply(
+                BinOp(ast.Add(),
+                    [ScalarType(), ScalarType()],
+                    ScalarType()
+                ),
+                [i,h], 
+                j)
+        dfdag = DFDAG([a1, a2, a3, a4, a5], [a,b,c,d,e,f,g,h,i,j])
+        lin = nes.Linearizator(dfdag.applies)
+        lin.visit(j)
+        self.assertTrue(lin.ordering[0] == a5)
+        self.assertTrue(lin.ordering.index(a2) > lin.ordering.index(a3))
+        self.assertTrue(lin.ordering.index(a1) > lin.ordering.index(a4))
+        self.assertTrue(lin.ordering.index(a1) > lin.ordering.index(a2))
+        self.assertTrue(lin.ordering.index(a1) > lin.ordering.index(a3))
+
 
     def simple_ctree_test(self):
         a = Value(type=ScalarType())
