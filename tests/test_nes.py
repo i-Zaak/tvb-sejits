@@ -152,7 +152,8 @@ class AstParsingTest(unittest.TestCase):
                     'x': ('svar','nodes','modes')
                     })
         self.assertTrue(len(dfdag.results) == 1)
-        self.assertTrue(dfdag.results[0].type.shape == ('svar','nodes','modes'))
+        self.assertTrue(isinstance(dfdag.results[0].routine,Return))
+        self.assertTrue(dfdag.results[0].inputs[0].type.shape == ('svar','nodes','modes'))
         
         
     def sliced_assign_test(self):
@@ -165,7 +166,7 @@ class AstParsingTest(unittest.TestCase):
                     'x': ('nodes','modes')
                     })
         self.assertTrue(len(dfdag.results) == 1)
-        self.assertTrue(dfdag.results[0].type.shape == ('cvar','nodes','modes'))
+        self.assertTrue(dfdag.results[0].inputs[0].type.shape == ('cvar','nodes','modes'))
         # how to test the synchronization properly?? 
         # Maybe rolling upwards from return statement?
 
@@ -264,7 +265,7 @@ class CodeGenTest(unittest.TestCase):
                 [i,h], 
                 j)
         dfdag = DFDAG([a1, a2, a3, a4, a5], [a,b,c,d,e,f,g,h,i,j])
-        lin = nes.linearize(dfdag)
+        lin = dfdag.linearize()
         self.assertTrue(lin[1] == a5)
         self.assertTrue(lin.index(a2) > lin.index(a3))
         self.assertTrue(lin.index(a1) > lin.index(a4))
@@ -480,43 +481,40 @@ class CodeGenTest(unittest.TestCase):
         # result should be single loop with scalar intermediate values, 
         # indexed array inputs and indexed array output
         # g = f *( a * b + d ) where f is scalar (other are input arrays)
-        a = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
-        b = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
-        c = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
-        d = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
-        e = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        a = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
+        b = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
+        c = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
+        d = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
+        e = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
         f = Value(type=ScalarType())
-        g = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        g = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
         op1 = Apply(
                 BinOp(ast.Mult(),
-                    [   ArrayType(data=ArrayData(shape=("nodes"))),
-                        ArrayType(data=ArrayData(shape=("nodes")))],
-                    ArrayType(data=ArrayData(shape=("nodes")))
+                    [   ArrayType(data=ArrayData(shape=("nodes",))),
+                        ArrayType(data=ArrayData(shape=("nodes",)))],
+                    ArrayType(data=ArrayData(shape=("nodes",)))
                 ),
                 [a,b], 
                 c)
         op2 = Apply(
                 BinOp(ast.Add(),
-                    [   ArrayType(data=ArrayData(shape=("nodes"))),
-                        ArrayType(data=ArrayData(shape=("nodes")))],
-                    ArrayType(data=ArrayData(shape=("nodes")))
+                    [   ArrayType(data=ArrayData(shape=("nodes",))),
+                        ArrayType(data=ArrayData(shape=("nodes",)))],
+                    ArrayType(data=ArrayData(shape=("nodes",)))
                 ),
                 [c,d], 
                 e)
         op3 = Apply(
                 BinOp(ast.Mult(),
-                    [   ArrayType(data=ArrayData(shape=("nodes"))),
+                    [   ArrayType(data=ArrayData(shape=("nodes",))),
                         ScalarType()],
-                    ArrayType(data=ArrayData(shape=("nodes")))
+                    ArrayType(data=ArrayData(shape=("nodes",)))
                 ),
                 [e,f], 
                 g)
         dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
         lb = LoopBlock("nodes")
         lb.applies = [op1, op2, op3]
-
-
-        
 
         self.assertTrue(False) # write me
     def value_collector_test(self):

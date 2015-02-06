@@ -19,6 +19,9 @@ class DFDAG:
 
         return dg
 
+    def linearize(self):
+        return nx.topological_sort(self.nx_representation())
+
     def to_dot(self):
         d_str = 'digraph {\n'
         for value in self.values:
@@ -50,7 +53,9 @@ class Apply(Node):
         self.routine = routine
         self.inputs = inputs
         self.output = output
-        output.source = self
+        if output is not None: 
+            # like for example return
+            output.source = self
 
     def depends(self):
        return self.inputs
@@ -183,7 +188,9 @@ class Synchronize(Routine):
     # array access synchronization (sliced access)
     pass
 
-
+class Return(Routine):
+    # represents return statement
+    pass
 
 
 

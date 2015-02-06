@@ -163,7 +163,8 @@ class DFValueNodeCreator(NodeVisitor):
     def visit_Return(self, node):
         self.generic_visit(node)
         sval = self._value_map[node.value]
-        self.results.append(sval)
+        ret = dfdag.Apply(dfdag.Return(), [sval], None) 
+        self.results.append(ret)
 
 
 class DFDAGVisitor(ast.NodeVisitor):
@@ -196,10 +197,6 @@ class BFSVisitor(ast.NodeVisitor):
             pass # been there, done that
         if len(self._queue) > 0:
             self.visit(self._queue.pop(0))
-
-def linearize(dfdag):
-    dag = dfdag.nx_representation()
-    return nx.topological_sort(dag)
 
 class SubGraphCollector(DFDAGVisitor):
     def __init__(self):
@@ -304,8 +301,10 @@ def dfdag_to_ctree(dfdag, result):
     return 
 
 
-def loop_block_lin(dfdag, loop_order):
-    pass
+def loop_block_lin(dag, loop_order, variable_names):
+    var_names = variable_names.copy()
+    lin = dag.linearize()
+    raise NotImplementedError()
 
 
 
@@ -315,7 +314,7 @@ def loop_block_lin(dfdag, loop_order):
 
 # cut and remove here
 # -----------------------------
-
+#
 
 
 
@@ -688,17 +687,6 @@ class DataDependencies(NodeVisitor):
         self.ret = node
         self.generic_visit(node)
 
-def linearize_dag(G):
-    D = nx.DiGraph(G)
-    lin = []
-    while D.number_of_nodes() > 0:
-        leaves = [n for n,d in D.out_degree_iter() if d ==0]
-        lin.extend(leaves)
-        for node in leaves:
-            D.remove_node(node)
-    return lin
-
-
 def deps_to_types(deps, ret, sim):
     node_types = {}
     # type function params, (also self.params) ... needed?
@@ -758,7 +746,7 @@ def deps_to_types(deps, ret, sim):
     arr_c = 0
 
     # dependence edges in resolved order (linearization from return value)
-    dep_nodes = linearize_dag(deps)
+    dep_nodes = nx.topological_sort(deps)
     for node in dep_nodes:
         if node_types.has_key(node):
             continue # it is a source
