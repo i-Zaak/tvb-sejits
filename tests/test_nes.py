@@ -429,7 +429,95 @@ class CodeGenTest(unittest.TestCase):
         self.assertTrue(lb.loop_blocks[0].applies == set([op4, op3]))
         self.assertTrue( (lb.loop_blocks[1].applies == set([op1]) and lb.loop_blocks[2].applies == set([op2]) ) or (lb.loop_blocks[2].applies == set([op1]) and lb.loop_blocks[1].applies == set([op2])) ) # quite ugly :(
 
+
+    
+    def value_dependecy_test(self):
+        a = Value(type=ScalarType())
+        b = Value(type=ScalarType())
+        c = Value(type=ScalarType())
+        d = Value(type=ScalarType())
+        e = Value(type=ScalarType())
+        f = Value(type=ScalarType())
+        op1 = Apply(
+                BinOp(ast.Add(),
+                    [  ScalarType(),ScalarType()],
+                     ScalarType()               ),
+                [a,b], 
+                c)
+        op2 = Apply(
+                BinOp(ast.Add(),
+                    [  ScalarType(), ScalarType()],
+                     ScalarType()               ),
+                [b,d], 
+                e)
+        op3 = Apply(
+                BinOp(ast.Add(),
+                    [  ScalarType(),ScalarType()],
+                     ScalarType()               ),
+                [e,c], 
+                f)
+        dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f])
+        dc = nes.DependencyCollector()
+        dc.visit(f)
+        self.assertTrue(dc.value_deps.has_key(a))
+        self.assertTrue(dc.value_deps.has_key(b))
+        self.assertTrue(dc.value_deps.has_key(c))
+        self.assertTrue(dc.value_deps.has_key(d))
+        self.assertTrue(dc.value_deps.has_key(e))
+        self.assertTrue(dc.value_deps.has_key(f))
+        vd = {}
+        vd[a] = set([op1])
+        vd[b] = set([op1,op2])
+        vd[c] = set([op3])
+        vd[d] = set([op2])
+        vd[e] = set([op3])
+        vd[f] = set()
+        self.assertTrue(dc.value_deps == vd)
+
+
     def simple_ctree_test(self):
+        # single loop block (only nodes, modes later) 1 state variable
+        # result should be single loop with scalar intermediate values, 
+        # indexed array inputs and indexed array output
+        # g = f *( a * b + d ) where f is scalar (other are input arrays)
+        a = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        b = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        c = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        d = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        e = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        f = Value(type=ScalarType())
+        g = Value(type=ArrayType(data=ArrayData(shape=("nodes"))))
+        op1 = Apply(
+                BinOp(ast.Mult(),
+                    [   ArrayType(data=ArrayData(shape=("nodes"))),
+                        ArrayType(data=ArrayData(shape=("nodes")))],
+                    ArrayType(data=ArrayData(shape=("nodes")))
+                ),
+                [a,b], 
+                c)
+        op2 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes"))),
+                        ArrayType(data=ArrayData(shape=("nodes")))],
+                    ArrayType(data=ArrayData(shape=("nodes")))
+                ),
+                [c,d], 
+                e)
+        op3 = Apply(
+                BinOp(ast.Mult(),
+                    [   ArrayType(data=ArrayData(shape=("nodes"))),
+                        ScalarType()],
+                    ArrayType(data=ArrayData(shape=("nodes")))
+                ),
+                [e,f], 
+                g)
+        dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
+        lb = LoopBlock("nodes")
+        lb.applies = [op1, op2, op3]
+
+
+        
+
         self.assertTrue(False) # write me
     def value_collector_test(self):
         self.assertTrue(False) # write me

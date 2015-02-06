@@ -268,7 +268,24 @@ class LoopBlockGrower(BFSVisitor):
         self.generic_visit(node) # hmm...
 
 
-        
+class DependencyCollector(DFDAGVisitor):
+    def __init__(self):
+        self.value_deps = {}
+        super(DependencyCollector,self).__init__()
+
+    def visit_Apply(self,node):
+        for val in node.inputs:
+            if not self.value_deps.has_key(val):
+                self.value_deps[val] = set()
+            if node not in self.value_deps[val]:
+                self.value_deps[val].add(node)
+        self.generic_visit(node)
+
+    def visit_Value(self, node):
+        if not self.value_deps.has_key(node):
+            self.value_deps[node] = set()
+        self.generic_visit(node)
+
 
 
 def ast_to_dfdag(py_ast, variable_shapes={}):
