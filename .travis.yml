@@ -1,0 +1,14 @@
+virtualenv:
+  system_site_packages: true
+before_install:
+    - sudo apt-get install -qq python-numpy python-scipy python-nose python-coverage python-networkx 
+
+language: python
+python:
+    - "2.7"
+
+install:
+        - pip install ctree
+        - pip install astmonkey
+
+script: "nosetests"

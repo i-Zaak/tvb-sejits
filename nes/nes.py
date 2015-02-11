@@ -23,6 +23,304 @@ import networkx as nx
 
 import numpy as np
 
+
+import dfdag
+
+
+class DFValueNodeCreator(NodeVisitor):
+    def __init__(self, shapes):
+        self._value_map = {}
+        self.applies = []
+        self.dfdag = None
+        self._variable_map = {}
+        self._array_defs = {}
+        self.results = []
+        for var in shapes:
+            if shapes[var] == 'scalar':
+                self._variable_map[var] = dfdag.Value(type=dfdag.ScalarType())
+            else:
+                data = dfdag.ArrayData(shape=shapes[var]) # 
+                value = dfdag.Value(type=dfdag.ArrayType(data=data))
+                self._variable_map[var] = value
+                self._array_defs[data] = [value]
+    
+    def createDAG(self):
+        values = list(set(self._value_map.values()))
+        
+        return dfdag.DFDAG(self.applies, values, self.results)
+
+    def visit_Assign(self,node):
+        self.generic_visit(node)
+        if len(node.targets ) > 1:
+            raise NotImplementedError("Only single value return statements supported.")
+        target = node.targets[0]
+
+        # what we get from rhs
+        val = self._value_map[node.value]
+        # broadcast or kill?
+        if isinstance(target, ast.Subscript):
+            # possibly incomplete kill
+            varval = self._variable_map[target.value.id]
+            syncval = dfdag.Value(type=varval.type)
+            routine = dfdag.Synchronize()
+            inputs = list(self._array_defs[varval.type.data])
+            inputs.append(val)
+            self._array_defs[varval.type.data].append(syncval)
+            sync = dfdag.Apply(routine, inputs, syncval)
+            self.applies.append(sync)
+            self._value_map[node] = syncval
+            self._variable_map[target.value.id] = syncval
+        elif isinstance(target, ast.Name):
+            # complete kill
+            if isinstance(val, dfdag.ArrayType):
+                self._array_defs[val.type.data] = [val]
+            self._variable_map[target.id] = val
+            self._value_map[target] = val
+        else:
+            # E.g. no attributes. Not now, not later.
+            raise NotImplementedError()
+
+        
+    def visit_AugAssign(self, node):
+        # inplace operators, implement later if needed
+        raise NotImplementedError()
+
+    def visit_BinOp(self, node):
+        self.generic_visit(node)
+        # TODO subscripts
+        inputs = []
+        input_types = []
+        for operand in [node.left, node.right]:
+            inputs.append( self._value_map[operand] )
+            input_types.append( self._value_map[operand].type )
+
+        output = dfdag.Value()
+        if isinstance(inputs[0].type, dfdag.ArrayType):
+            out_type = inputs[0].type.broadcast_with(inputs[1].type)
+            self._array_defs[out_type.data] = [output]
+        elif isinstance(inputs[1].type, dfdag.ArrayType): 
+            out_type = inputs[1].type.broadcast_with(inputs[0].type)
+            self._array_defs[out_type.data] = [output]
+        else:
+            out_type = dfdag.ScalarType()
+
+        output.type=out_type
+        self._value_map[node] = output
+        
+        routine = dfdag.BinOp(
+                operator = node.op, 
+                input_types = input_types,
+                output_type = out_type) 
+        app = dfdag.Apply(routine, inputs, output)
+        self.applies.append(app)
+            
+
+    def visit_Subscript(self, node):
+        #expects the subscripted value to have known type
+
+        # no expressions allowed in the slice
+        self.visit(node.value)
+ 
+        sval = self._value_map[node.value]
+        slice_shape = list(sval.type.shape)
+        
+        if isinstance(node.slice, ast.ExtSlice):
+            #expect things like x[0,:,2]
+            for i, dim in enumerate(node.slice.dims):
+                if isinstance(dim, ast.Index):
+                    slice_shape[i] = dim.value.n
+                else:
+                    assert( dim.lower is None and dim.upper is None and dim.step is None)
+                    pass
+
+        elif isinstance(node.slice, ast.Index):
+            # e.g. x[3]
+            slice_shape[0] = node.slice.value.n
+        else:
+            # do we need something like x[:] => ast.Slice?
+            raise NotImplementedError()
+        slice = tuple(slice_shape)
+
+        newval = dfdag.Value()
+        newval.type = dfdag.ArrayType( data = sval.type.data, slice=slice)
+        newval.type.data = sval.type.data
+        self._value_map[node] = newval
+
+
+    def visit_Name(self, node):
+        if self._variable_map.has_key(node.id):
+            self._value_map[node] = self._variable_map[node.id]
+        else:
+            #value = dfdag.Value(self.variable_types.get(node.id,None))
+            value = dfdag.Value(None)
+            self._value_map[node] = value
+            self._variable_map[node.id] = value
+
+    def visit_Num(self, node):
+        value = dfdag.Value(type=dfdag.Constant(node.n))
+        self._value_map[node] = value
+
+    def visit_Return(self, node):
+        self.generic_visit(node)
+        sval = self._value_map[node.value]
+        ret = dfdag.Apply(dfdag.Return(), [sval], None) 
+        self.results.append(ret)
+
+
+class DFDAGVisitor(ast.NodeVisitor):
+    """
+    Walks the graph upwards following the dependencies.
+    """
+    def __init__(self):
+        self._visited = set() # DAG is not a tree
+
+    def generic_visit(self, node):
+        if node not in self._visited:
+            self._visited.add(node)
+            for dep in node.depends():
+                self.visit(dep)
+        else:
+            pass # been there, done that
+
+
+class BFSVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self._queue = [] # poor mans queues: uses pop(0) and append(node)
+        self._visited = set() # again, DAG is not a tree
+
+    def generic_visit(self,node):
+        if node not in self._visited:
+            self._visited.add(node)
+            for dep in node.depends():
+                self._queue.append(dep)
+        else:
+            pass # been there, done that
+        if len(self._queue) > 0:
+            self.visit(self._queue.pop(0))
+
+class SubGraphCollector(DFDAGVisitor):
+    def __init__(self):
+        self.values = set()
+        self.applies = set()
+        super(SubGraphCollector,self).__init__()
+
+    def visit_Value(self, node):
+        self.generic_visit(node)
+        self.values.add(node)
+    def visit_Apply(self, node):
+        self.generic_visit(node)
+        self.applies.add(node)
+
+class LoopBlocker(BFSVisitor): 
+    """
+    loop fusion pre-linearizaion
+    """
+    
+    def __init__(self, dimension):
+        self.dim = dimension
+        self.loop_blocks = []
+        self._blocked = set()
+        super(LoopBlocker,self).__init__()
+
+    def visit_Value(self, node):
+        if isinstance(node.type, dfdag.ArrayType) and self.dim in node.type.shape:
+            if node.source is not None and node.source not in self._blocked:
+                # engage blocking
+                lbg = LoopBlockGrower(self.dim, set(self._blocked))
+                lbg.visit(node)
+                self.loop_blocks.append(lbg.loop_block)
+                self._blocked.update(lbg.loop_block.applies)
+            else:
+                pass # already part of block, passing by
+        else:
+            # invariant
+            pass
+        self.generic_visit(node)
+            
+        
+class LoopBlockGrower(BFSVisitor):
+    """
+    Give me seed, I'll grow you a block.
+    """
+    def __init__(self, dimension, forbidden=set()):
+        self.dim = dimension
+        self._forbidden = set(forbidden)
+        self.loop_block = dfdag.LoopBlock(self.dim)
+        super(LoopBlockGrower,self).__init__()
+
+    def visit_Value(self,node):
+        if node not in self._forbidden:
+            if isinstance(node.type, dfdag.ArrayType) and self.dim in node.type.shape:
+                # previously unvisited, not forbidden, safe to add source
+                if node.source is not None:
+                    self.loop_block.applies.add(node.source)
+            else:
+                # invariant, forbid underlaying DAG (remove already placed applies?)
+                sg = SubGraphCollector()
+                sg.visit(node)
+                self._forbidden.update(sg.values)
+                self.loop_block.applies.difference_update(sg.applies)
+        else:
+            pass # you shall not pass
+        self.generic_visit(node) # hmm...
+
+
+class DependencyCollector(DFDAGVisitor):
+    def __init__(self):
+        self.value_deps = {}
+        super(DependencyCollector,self).__init__()
+
+    def visit_Apply(self,node):
+        for val in node.inputs:
+            if not self.value_deps.has_key(val):
+                self.value_deps[val] = set()
+            if node not in self.value_deps[val]:
+                self.value_deps[val].add(node)
+        self.generic_visit(node)
+
+    def visit_Value(self, node):
+        if not self.value_deps.has_key(node):
+            self.value_deps[node] = set()
+        self.generic_visit(node)
+
+
+
+def ast_to_dfdag(py_ast, variable_shapes={}):
+    tree = monkeytrans.ParentNodeTransformer().visit(py_ast)
+    tree = RemoveComments().visit(py_ast)
+
+    dvn = DFValueNodeCreator(variable_shapes)
+    dvn.visit(py_ast)
+    return dvn.createDAG()
+
+def dfdag_to_ctree(dfdag, result):
+    # TODO deal with loop blocks
+    cbt = CtreeBlockTranslator(dfdag.applies)
+
+    cbt.visit(result)
+    return 
+
+
+def loop_block_lin(dag, loop_order, variable_names):
+    var_names = variable_names.copy()
+    lin = dag.linearize()
+    raise NotImplementedError()
+
+
+
+
+
+
+
+# cut and remove here
+# -----------------------------
+#
+
+
+
+
+
+
 def MultiArrayRef(name, *idxs):
     """
     Given a string and a list of ints, produce the chain of
@@ -389,17 +687,6 @@ class DataDependencies(NodeVisitor):
         self.ret = node
         self.generic_visit(node)
 
-def linearize_dag(G):
-    D = nx.DiGraph(G)
-    lin = []
-    while D.number_of_nodes() > 0:
-        leaves = [n for n,d in D.out_degree_iter() if d ==0]
-        lin.extend(leaves)
-        for node in leaves:
-            D.remove_node(node)
-    return lin
-
-
 def deps_to_types(deps, ret, sim):
     node_types = {}
     # type function params, (also self.params) ... needed?
@@ -459,7 +746,7 @@ def deps_to_types(deps, ret, sim):
     arr_c = 0
 
     # dependence edges in resolved order (linearization from return value)
-    dep_nodes = linearize_dag(deps)
+    dep_nodes = nx.topological_sort(deps)
     for node in dep_nodes:
         if node_types.has_key(node):
             continue # it is a source
