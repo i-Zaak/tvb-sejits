@@ -24,17 +24,27 @@ import networkx as nx
 import numpy as np
 
 
-import dfdag
-
+import dfdag, usr
 
 class DFValueNodeCreator(NodeVisitor):
     def __init__(self, shapes):
         self._value_map = {}
         self.applies = []
+        self.results = []
         self.dfdag = None
         self._variable_map = {}
+
+        # This data structure holds the reaching definitions of array variables
+        # during parsing. Main index are the instances of ArrayData
+        # (representing the particular array in memory), which are shared by
+        # all references represented by ArrayType instances. For every
+        # ArrayData, we hold the list of all reaching definitions given by a
+        # tuple (value,usr), where value is a Value node in the df-DAG (place
+        # of definition) and usr is USR instance describing the extent of the
+        # definition (can change with following partial kills).
         self._array_defs = {}
-        self.results = []
+        
+
         for var in shapes:
             if shapes[var] == 'scalar':
                 self._variable_map[var] = dfdag.Value(type=dfdag.ScalarType())
@@ -43,6 +53,7 @@ class DFValueNodeCreator(NodeVisitor):
                 value = dfdag.Value(type=dfdag.ArrayType(data=data))
                 self._variable_map[var] = value
                 self._array_defs[data] = [value]
+
     
     def createDAG(self):
         values = list(set(self._value_map.values()))
@@ -131,11 +142,13 @@ class DFValueNodeCreator(NodeVisitor):
                     slice_shape[i] = dim.value.n
                 else:
                     assert( dim.lower is None and dim.upper is None and dim.step is None)
-                    pass
+                    slice_shape[i] = ":" # for now, could be generalized using lower/upper/step
 
         elif isinstance(node.slice, ast.Index):
             # e.g. x[3]
             slice_shape[0] = node.slice.value.n
+            for i in range(1,len(slice_shape)):
+                slice_shape[i] = ":"
         else:
             # do we need something like x[:] => ast.Slice?
             raise NotImplementedError()

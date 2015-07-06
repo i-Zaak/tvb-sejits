@@ -119,9 +119,10 @@ class ArrayType(Type):
     def _slice_shape(self, shape, slice):
         newshape = []
         for i in reversed(range(len(shape))):
-            if isinstance(slice[i], str): #shouldnt we go for ":" notation?
+            if isinstance(slice[i], str): 
+                assert(slice[i] == ":") # we don't suppor complex slices for now
                 newshape.append(shape[i])
-            # we discard dimensions where slice is integer
+            # we discard dimensions where slice is integer 
         newshape.reverse()
         newshape = tuple(newshape)
         return newshape
@@ -142,8 +143,14 @@ class ArrayType(Type):
     def __init__(self, data, slice=None ):
         self.data = data # memory allocation
         if slice is None:
-            self.slice = self.data.shape
+            slice = tuple([':'] * len(self.data.shape)) # [':', ..., ':'] take all on all dimensions
+            self.slice = slice
+            #self.slice = self.data.shape TODO remove
         else:
+            for i, sl in enumerate(slice):
+                if(sl != ":"):
+                    assert(isinstance(sl,int)) # just simple slices for now 
+                    assert(isinstance(data.shape[i], int) ) # nontrivial slices only on knonw-sized dimensions
             self.slice = slice
 
     def broadcast_with(self, other):
@@ -160,7 +167,11 @@ class ArrayType(Type):
 
 class ArrayData(object):
     """
-    Represents pointer to array data.
+    Represents pointer to array data. The shape can be mix of known-sized and
+    parametric dimensions.
+
+    shape: list of integers (dims with known size ) and strings (parametric
+    dims).
     """
     def __init__(self, shape):
         self.shape = shape
