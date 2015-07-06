@@ -1,4 +1,4 @@
-from sympy import ProductSet, FiniteSet, Range, EmptySet
+from sympy import ProductSet, FiniteSet, Range, EmptySet, Complement
 
 class USR:
     '''
@@ -35,21 +35,24 @@ class USR:
     
     def intersect(self, other):
         usr = USR()
-        usr._symbolic_set = self._symbolic_set.intersect(other)
+        usr._symbolic_set = self._symbolic_set.intersect(other._symbolic_set)
         return usr
 
     def union(self, other):
         usr = USR()
-        usr._symbolic_set = self._symbolic_set.union(other)
+        usr._symbolic_set = self._symbolic_set.union(other._symbolic_set)
         return usr
 
     def is_empty(self):
-        return FiniteSet(self._symbolic_set) is EmptySet()
+        return self._symbolic_set is EmptySet()
 
-    def subtract(self, other):
+    def complement(self, other):
         usr = USR()
-        usr._symbolic_set = FiniteSet(self._symbolic_set) - FiniteSet(other._symbolic_set)
+        usr._symbolic_set = Complement(FiniteSet(*self._symbolic_set), FiniteSet(*other._symbolic_set))
         return usr
 
     def __eq__(self, other):
-        return FiniteSet(self._symbolic_set) == FiniteSet(other._symbolic_set)
+        return FiniteSet(*self._symbolic_set) == FiniteSet(*other._symbolic_set)
+
+    def __str__(self):
+        return str(self._symbolic_set)
