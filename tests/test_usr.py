@@ -56,4 +56,24 @@ class USRTest(unittest.TestCase):
         self.assertTrue( self.usr12.complement(self.usr2) == self.usr1)
         self.assertFalse( self.usr12.complement(self.usr2) == self.usr2)
         self.assertFalse( self.usr12.complement(self.usr1) == self.usr1)
+    
+    def pseudo_dfun_test(self):
+        derivative = USR([3,4]) # initialization: 3 variables, 4 modes
+        
+        x1 = USR([(0,1), 4 ]) # partial kill
+        c1 = derivative.complement(x1) # reaching def not killed yet
+        
+        x2 = USR([(1,2), 4 ]) # partial kill
+        c2 = c1.complement(x2) # reaching def not killed yet
+        c3 = x1.complement(x2) # reaching def not killed yet
 
+        x3 = USR([(2,3), 4 ]) # partial kill
+        c4 = c2.complement(x3) # reaching def for derivative
+        c5 = c3.complement(x3) # reaching def for x1
+        c6 = x2.complement(x3) # reaching def for x2
+
+        use = USR([3,4]) # now we need the whole array again
+        self.assertTrue(c4.is_empty()) # initial value completely overwritten 
+        self.assertTrue( c5 == x1 ) # x1 still valid reaching def
+        self.assertTrue( c6 == x2 ) # x2 still valid reaching def
+        self.assertTrue( x1.union(x2).union(x3) == use) # just a sanity check: we cover the whole array.
