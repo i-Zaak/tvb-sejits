@@ -37,7 +37,9 @@ class DFDAG:
 
 class Node(object):
     """
-    There will be two basic types: functions and values. Edges are implicit. Function ``depends`` returns iterator over targets of outgoing edges (for DAG walks) and should be implemented by all nodes in the graph.
+    There will be two basic types: functions and values. Edges are implicit.
+    Function ``depends`` returns iterator over targets of outgoing edges (for
+    DAG walks) and should be implemented by all nodes in the graph.
     """
     def depends(self):
         raise NotImplementedError()
@@ -49,7 +51,8 @@ class Apply(Node):
     """
 
     def __init__(self, routine, inputs, output):
-        # TODO fancy checking later (routine/inputs/outpus consitency), we live dangerously for now
+        # TODO fancy checking later (routine/inputs/outpus consitency), we live
+        # dangerously for now
         self.routine = routine
         self.inputs = inputs
         self.output = output
@@ -65,7 +68,8 @@ class Apply(Node):
 
 class Value(Node):
     """
-    Represents single value (array, slice, constant). Once created, cannot be changed, can be reused.
+    Represents single value (array, slice, constant). Once created, cannot be
+    changed, can be reused.
     """
 
     def __init__(self, type=None, source=None):
@@ -98,6 +102,9 @@ class Constant(ScalarType):
         self.number = number
 
 class ArrayType(Type):
+    """
+    Represents a reference to an array, or its part (in a sense of NumPy slice).
+    """
     
     def _broadcast_shapes(self, shape1, shape2):
         if len(shape1) < len(shape2):
@@ -120,7 +127,8 @@ class ArrayType(Type):
         newshape = []
         for i in reversed(range(len(shape))):
             if isinstance(slice[i], str): 
-                assert(slice[i] == ":") # we don't suppor complex slices for now
+                # we don't support complex slices for now
+                assert(slice[i] == ":") 
                 newshape.append(shape[i])
             # we discard dimensions where slice is integer 
         newshape.reverse()
@@ -146,13 +154,21 @@ class ArrayType(Type):
             # [':', ..., ':'] take all on all dimensions
             slice = tuple([':'] * len(self.data.shape)) 
             self.slice = slice
+            self.dim_map = range(len(self.data.shape)) # identity for start
         else:
+            # go get the proper shape from previous slice
+            assert(len(slice) == len(self.data.shape))
+            self.dim_map = []
             for i, sl in enumerate(slice):
                 if(sl != ":"):
                     assert(isinstance(sl,int)) # just simple slices for now 
                     
                     # nontrivial slices only on knonw-sized dimensions
                     assert(isinstance(data.shape[i], int) ) 
+                    self.dim_map.append(i)
+                else:
+                    # we discard dimensions where slice is integer 
+                    pass
             self.slice = slice
 
     def broadcast_with(self, other):

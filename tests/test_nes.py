@@ -125,6 +125,7 @@ class AstParsingTest(unittest.TestCase):
                     })
         exp_shape = ('svar','nodes','modes')
         self.assertTrue(dfdag.applies[0].output.type.shape == exp_shape)
+
     def type_scalar_tests(self):
         py_ast = ast.parse("x = a  + b")
         dfdag = nes.ast_to_dfdag(
@@ -137,21 +138,31 @@ class AstParsingTest(unittest.TestCase):
 
     def type_slicing_test(self):
         py_ast = ast.parse("a = c[0]\nb = c[1]\nx = a + b")
-        dfdag = nes.ast_to_dfdag(
+        df_dag = nes.ast_to_dfdag(
                 py_ast, 
                 variable_shapes = {
                     'c': (3,'nodes','modes'),
                     'x': ('nodes','modes')
                     })
         
-        self.assertTrue(dfdag.applies[0].output.type.shape == ('nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].output.type.slice == (':', ':'))
-        self.assertTrue(dfdag.applies[0].output.type.data.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].output.type.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].output.type.slice == (':', ':'))
+        self.assertTrue(df_dag.applies[0].output.type.data.shape == ('nodes', 'modes'))
 
-        self.assertTrue(dfdag.applies[0].inputs[0].type.shape == ('nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].inputs[0].type.slice == (0, ':', ':'))
-        self.assertTrue(dfdag.applies[0].inputs[0].type.data.shape == (3, 'nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].inputs[0].type.data == dfdag.applies[0].inputs[0].type.data)
+        self.assertTrue(df_dag.applies[0].inputs[0].type.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].inputs[0].type.slice == (0, ':', ':'))
+        self.assertTrue(df_dag.applies[0].inputs[0].type.data.shape == (3, 'nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].inputs[0].type.data == df_dag.applies[0].inputs[0].type.data)
+
+    def repeated_slice_test(self):
+        py_ast = ast.parse("a = x[0]\nb=a[:,1]")
+        df_dag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'x': (3,'nodes',5),
+                    })
+        import ipdb; ipdb.set_trace()
+
 
     def return_test(self):
         py_ast = ast.parse("return x + 1")

@@ -142,7 +142,8 @@ class DFValueNodeCreator(NodeVisitor):
                     slice_shape[i] = dim.value.n
                 else:
                     assert( dim.lower is None and dim.upper is None and dim.step is None)
-                    slice_shape[i] = ":" # for now, could be generalized using lower/upper/step
+                    # for now, could be generalized using lower/upper/step
+                    slice_shape[i] = ":" 
 
         elif isinstance(node.slice, ast.Index):
             # e.g. x[3]
