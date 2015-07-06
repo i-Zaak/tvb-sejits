@@ -143,14 +143,16 @@ class ArrayType(Type):
     def __init__(self, data, slice=None ):
         self.data = data # memory allocation
         if slice is None:
-            slice = tuple([':'] * len(self.data.shape)) # [':', ..., ':'] take all on all dimensions
+            # [':', ..., ':'] take all on all dimensions
+            slice = tuple([':'] * len(self.data.shape)) 
             self.slice = slice
-            #self.slice = self.data.shape TODO remove
         else:
             for i, sl in enumerate(slice):
                 if(sl != ":"):
                     assert(isinstance(sl,int)) # just simple slices for now 
-                    assert(isinstance(data.shape[i], int) ) # nontrivial slices only on knonw-sized dimensions
+                    
+                    # nontrivial slices only on knonw-sized dimensions
+                    assert(isinstance(data.shape[i], int) ) 
             self.slice = slice
 
     def broadcast_with(self, other):
