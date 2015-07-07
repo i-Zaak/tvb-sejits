@@ -74,11 +74,11 @@ class AstParsingTest(unittest.TestCase):
 
     def slice_test(self):
         py_ast = ast.parse("x[0]")
-        dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': (5,'nodes','modes')})
+        df_dag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': (5,'nodes','modes')})
 
         exp_shape = ('nodes','modes')
-        self.assertTrue(dfdag.values[0].type.shape ==exp_shape or 
-                dfdag.values[1].type.shape ==exp_shape)
+        self.assertTrue(df_dag.values[0].type.shape ==exp_shape or 
+                df_dag.values[1].type.shape ==exp_shape)
 
     def slice_multidim_test(self):
         py_ast = ast.parse("x[0,:,2]")
@@ -161,7 +161,12 @@ class AstParsingTest(unittest.TestCase):
                 variable_shapes = {
                     'x': (3,'nodes',5),
                     })
-        import ipdb; ipdb.set_trace()
+        shapes = set()
+        for val in df_dag.values:
+            shapes.add(val.type.shape)
+        self.assertTrue((3,'nodes',5) in shapes)
+        self.assertTrue(('nodes',5) in shapes)
+        self.assertTrue(('nodes',) in shapes)
 
 
     def return_test(self):

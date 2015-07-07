@@ -106,6 +106,80 @@ class ArrayType(Type):
     Represents a reference to an array, or its part (in a sense of NumPy slice).
     """
     
+    def __init__(self, data, slice=None ):
+        self.data = data # memory allocation
+        self.slice = slice
+
+    @property 
+    def slice(self):
+        return self._slice
+
+    @slice.setter
+    def slice(self, slice):
+        """
+        This allows only fully described slices (for the whole ArrayData). For
+        slices of views (already sliced arrays), use apply_slice().
+        """
+        if slice is None:
+            # [':', ..., ':'] take all on all dimensions
+            slice = tuple([':'] * len(self.data.shape)) 
+            self._slice = slice
+            self._dim_map = range(len(self.data.shape)) # identity for start
+        else:
+            # go get the proper slice length
+            assert(len(slice) == len(self.data.shape))
+            self._dim_map = []
+            for i, sl in enumerate(slice):
+                if(sl == ":"):
+                    self._dim_map.append(i)
+                else:
+                    assert(isinstance(sl,int)) # just simple slices for now 
+                    # nontrivial slices only on known-sized dimensions
+                    assert(isinstance(self.data.shape[i], int) ) 
+
+                    # we discard dimensions where slice is integer 
+                    pass
+            self._slice = slice
+
+    def apply_slice(self, slice):
+        #TODO vyuzije dim_map, vytvori novy slice a aplikuje ho
+        assert( len(slice) == len(self.shape) == len(self._dim_map) )
+        new_slice = list(self._slice)
+        for i, dim in enumerate(self._dim_map):
+            new_slice[dim] = slice[i]
+
+        self.slice = tuple(new_slice)
+
+
+    @property
+    def shape(self):
+        newshape = []
+        for i in reversed(range(len(self.data.shape))):
+            if isinstance(self.slice[i], str): 
+                # we don't support complex slices for now
+                assert(self.slice[i] == ":") 
+                newshape.append(self.data.shape[i])
+            # we discard dimensions where slice is integer 
+        newshape.reverse()
+        newshape = tuple(newshape)
+        return newshape
+
+    @shape.setter
+    def shape(self,shape):
+        # just don't
+        raise RuntimeError() 
+
+
+    def broadcast_with(self, other):
+        # correctness of the broadcast assumed
+        if isinstance(other, ScalarType):
+            shape =  self.shape
+        else:
+            assert( isinstance(other, ArrayType))
+            shape = self._broadcast_shapes(self.shape, other.shape)
+        return ArrayType( data=ArrayData(shape))
+
+    # TODO refactor this to the function above
     def _broadcast_shapes(self, shape1, shape2):
         if len(shape1) < len(shape2):
             shape = shape2
@@ -122,63 +196,6 @@ class ArrayType(Type):
             shape.reverse()
             shape = tuple(shape)
         return shape
-
-    def _slice_shape(self, shape, slice):
-        newshape = []
-        for i in reversed(range(len(shape))):
-            if isinstance(slice[i], str): 
-                # we don't support complex slices for now
-                assert(slice[i] == ":") 
-                newshape.append(shape[i])
-            # we discard dimensions where slice is integer 
-        newshape.reverse()
-        newshape = tuple(newshape)
-        return newshape
-
-
-    @property
-    def shape(self):
-        if self.slice is None:
-            return self.data.shape
-        else:
-            return self._slice_shape(self.data.shape,self.slice)
-
-    @shape.setter
-    def shape(self,shape):
-        # just don't
-        raise RuntimeError() 
-
-    def __init__(self, data, slice=None ):
-        self.data = data # memory allocation
-        if slice is None:
-            # [':', ..., ':'] take all on all dimensions
-            slice = tuple([':'] * len(self.data.shape)) 
-            self.slice = slice
-            self.dim_map = range(len(self.data.shape)) # identity for start
-        else:
-            # go get the proper shape from previous slice
-            assert(len(slice) == len(self.data.shape))
-            self.dim_map = []
-            for i, sl in enumerate(slice):
-                if(sl != ":"):
-                    assert(isinstance(sl,int)) # just simple slices for now 
-                    
-                    # nontrivial slices only on knonw-sized dimensions
-                    assert(isinstance(data.shape[i], int) ) 
-                    self.dim_map.append(i)
-                else:
-                    # we discard dimensions where slice is integer 
-                    pass
-            self.slice = slice
-
-    def broadcast_with(self, other):
-        # correctness of the broadcast assumed
-        if isinstance(other, ScalarType):
-            shape =  self.shape
-        else:
-            assert( isinstance(other, ArrayType))
-            shape = self._broadcast_shapes(self.shape, other.shape)
-        return ArrayType( data=ArrayData(shape))
 
     def __repr__(self):
         return "<ArrayType: shape:" + str(self.shape) + " | slice:" + str(self.slice) +" | data:" + str(self.data) +">"

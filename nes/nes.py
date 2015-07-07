@@ -27,6 +27,23 @@ import numpy as np
 import dfdag, usr
 
 class DFValueNodeCreator(NodeVisitor):
+
+    def _array_to_usr(self, array):
+        subscripts = []
+        for i, dim in enumerate(array.data.shape):
+            if isinstance(dim, int):
+                if array.slice[i] == ":":
+                    subscripts.append(dim) # we take this whole dimension
+                else:
+                    # assumes simple slice in this dimension 
+                    assert(isinstance(sl,int))
+                    subscripts.append((sl,sl+1)) 
+            else:
+                # we track only known-sized dimensions
+                pass
+        return usr.USR(subscripts)
+
+
     def __init__(self, shapes):
         self._value_map = {}
         self.applies = []
@@ -49,10 +66,11 @@ class DFValueNodeCreator(NodeVisitor):
             if shapes[var] == 'scalar':
                 self._variable_map[var] = dfdag.Value(type=dfdag.ScalarType())
             else:
-                data = dfdag.ArrayData(shape=shapes[var]) # 
+                data = dfdag.ArrayData(shape=shapes[var]) 
                 value = dfdag.Value(type=dfdag.ArrayType(data=data))
-                self._variable_map[var] = value
-                self._array_defs[data] = [value]
+                self._variable_map[var] = value # TODO: not really!
+                val_usr = self._array_to_usr(value.type)
+                self._array_defs[data] = [(value,val_usr)]
 
     
     def createDAG(self):
@@ -156,8 +174,10 @@ class DFValueNodeCreator(NodeVisitor):
         slice = tuple(slice_shape)
 
         newval = dfdag.Value()
-        newval.type = dfdag.ArrayType( data = sval.type.data, slice=slice)
-        newval.type.data = sval.type.data
+        # poor man's copy constructor
+        newval.type = dfdag.ArrayType( data = sval.type.data, slice=sval.type.slice)
+        # newval.type.data = sval.type.data #TODO Wut? Just remove this.
+        newval.type.apply_slice(slice)
         self._value_map[node] = newval
 
 
