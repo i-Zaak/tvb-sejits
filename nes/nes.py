@@ -68,7 +68,7 @@ class DFValueNodeCreator(NodeVisitor):
             else:
                 data = dfdag.ArrayData(shape=shapes[var]) 
                 value = dfdag.Value(type=dfdag.ArrayType(data=data))
-                self._variable_map[var] = value # TODO: not really!
+                self._variable_map[var] = value 
                 val_usr = self._array_to_usr(value.type)
                 self._array_defs[data] = [(value,val_usr)]
 
