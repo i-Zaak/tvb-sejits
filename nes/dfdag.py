@@ -230,6 +230,22 @@ class BinOp(Routine):
         self.output_type = output_type 
         self.operator = operator
 
+class Broadcast(Routine):
+    """
+    Sets the values from the whole source array to the part of target array.
+    Syntactically it represents an assign to subscripted variable:  x[0,:] = a.
+
+    source: Value of ArrayType
+    target: Value of ArrayType
+
+    Note, that the subscript itself is stored in the target ArrayType, while
+    the actual memory destination in the target ArrayData. Shape of source and
+    target should to match.
+    """
+    def __init__(self, source, target):
+        self.source = source
+        self.target = target
+
 class Synchronize(Routine):
     # array access synchronization (sliced access)
     pass

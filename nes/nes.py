@@ -86,9 +86,16 @@ class DFValueNodeCreator(NodeVisitor):
 
         # what we get from rhs
         val = self._value_map[node.value]
+
         # broadcast or kill?
         if isinstance(target, ast.Subscript):
-            # possibly incomplete kill
+            # possibly incomplete kill, synchronization taken care of in
+            # visit_Subscript down below
+
+            # value corresponding to the synchronized Subscript
+            lhs_val = self._value_map[target] 
+
+
             varval = self._variable_map[target.value.id]
             syncval = dfdag.Value(type=varval.type)
             routine = dfdag.Synchronize()
@@ -102,7 +109,8 @@ class DFValueNodeCreator(NodeVisitor):
         elif isinstance(target, ast.Name):
             # complete kill
             if isinstance(val, dfdag.ArrayType):
-                self._array_defs[val.type.data] = [val]
+                val_usr = self._array_to_usr(value.type)
+                self._array_defs[val.type.data] = [(val,val_usr)]
             self._variable_map[target.id] = val
             self._value_map[target] = val
         else:
