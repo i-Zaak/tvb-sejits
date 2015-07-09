@@ -26,7 +26,42 @@ import numpy as np
 
 import dfdag, usr
 
-class DFValueNodeCreator(NodeVisitor):
+class UseDefs:
+    """
+    This class encapsulates the logic required to track the use-def locations
+    of the contents of arrays. Internal state is updated during parsing with
+    every use and def, so it allows us to correctly represent the semantics of
+    the original code.
+    """
+    def __init__(self):
+        # This data structure holds the reaching definitions of array variables
+        # during parsing. Main index are the instances of ArrayData
+        # (representing the particular array in memory), which are shared by
+        # all references represented by ArrayType instances. For every
+        # ArrayData, we hold the list of all reaching definitions given by a
+        # tuple (value,usr), where value is a Value node in the df-DAG (place
+        # of definition) and usr is USR instance describing the extent of the
+        # definition (can change with following partial kills).
+        self._array_defs = {}
+
+        # This data structure holds the uses of curently valid contents of the array (see _array_defs above). Every kill has to synchronize with the operations, which use the invalidated data. 
+        self._array_uses = {}
+
+    def define(self, value_node):
+        '''
+        Defines the contents of an ArrayData to the extent given by the
+        ArrayType slice. Returns list of value nodes, which need to be guarded
+        by a barrier before the kill can take place. 
+        '''
+        val_usr = self._array_to_usr(value_node.type)
+        self._array_defs[array.type.data] = [(array,val_usr)]
+        
+    def use(self, value_node):
+        '''
+        Checks the currently valid definitions and returns a list of value
+        nodes contributing the required portion of the array.
+        '''
+        TODOOOO
 
     def _array_to_usr(self, array):
         subscripts = []
@@ -44,22 +79,18 @@ class DFValueNodeCreator(NodeVisitor):
         return usr.USR(subscripts)
 
 
+class DFValueNodeCreator(NodeVisitor):
+
+
+
     def __init__(self, shapes):
         self._value_map = {}
         self.applies = []
         self.results = []
         self.dfdag = None
         self._variable_map = {}
+        self.usedefs = UseDefs()
 
-        # This data structure holds the reaching definitions of array variables
-        # during parsing. Main index are the instances of ArrayData
-        # (representing the particular array in memory), which are shared by
-        # all references represented by ArrayType instances. For every
-        # ArrayData, we hold the list of all reaching definitions given by a
-        # tuple (value,usr), where value is a Value node in the df-DAG (place
-        # of definition) and usr is USR instance describing the extent of the
-        # definition (can change with following partial kills).
-        self._array_defs = {}
         
 
         for var in shapes:
@@ -108,9 +139,8 @@ class DFValueNodeCreator(NodeVisitor):
             self._variable_map[target.value.id] = syncval
         elif isinstance(target, ast.Name):
             # complete kill
-            if isinstance(val, dfdag.ArrayType):
-                val_usr = self._array_to_usr(value.type)
-                self._array_defs[val.type.data] = [(val,val_usr)]
+            if isinstance(val.type, dfdag.ArrayType):
+                self.usedefs.define(val)
             self._variable_map[target.id] = val
             self._value_map[target] = val
         else:
