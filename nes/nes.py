@@ -44,7 +44,14 @@ class UseDefs:
         # definition (can change with following partial kills).
         self._array_defs = {}
 
-        # This data structure holds the uses of curently valid contents of the array (see _array_defs above). Every kill has to synchronize with the operations, which use the invalidated data. 
+        # This data structure holds the uses of curently valid contents of the
+        # array (see _array_defs above). We consider application of an
+        # operation on an array as an use, excluding "supporting operations",
+        # such as broadcast, create_view, barrier, etc. Every kill has to
+        # synchronize with the operations, which use the invalidated data. For
+        # every definiton, we use the resulting Value node as a key, and  we
+        # keep the list of pairs (value, use) where the value is the result of
+        # an operation using the defined data, and USR extent of the use. 
         self._array_uses = {}
 
     def define(self, value_node):
@@ -53,15 +60,41 @@ class UseDefs:
         ArrayType slice. Returns list of value nodes, which need to be guarded
         by a barrier before the kill can take place. 
         '''
-        val_usr = self._array_to_usr(value_node.type)
-        self._array_defs[array.type.data] = [(array,val_usr)]
+        def_usr = self._array_to_usr(value_node.type)
+        uses = set()
+
+        #this seriously needs review
+        for old_def in self._array_defs[array.type.data]:
+            if (old_def[1].intersect(def_usr).is_empty()):
+                new_defs.append(old_def)
+            else:
+                conflict = def_usr.intersect(old_def[1])
+
+                if self._array_uses.has_key(old_def[0]):
+                    use = self._array_uses[old_def[0]]
+                    if not use[1].intesect(conflict).is_empty():
+                        uses.add(self._array_uses.has_key[old_def[0]]) 
+
+                    
+                def_usr = def_usr.complement(conflict)
+                old_def[1] = old_def[1].complement(conflict)
+                
+
+
+
+
+        new_defs = [(value_node, def_usr)] 
+        self._array_defs[array.type.data] = new_defs
         
     def use(self, value_node):
         '''
         Checks the currently valid definitions and returns a list of value
-        nodes contributing the required portion of the array.
+        nodes contributing the required portion of the array. Also registers
+        the use of the definitions for later checks on rewrites.
         '''
-        TODOOOO
+        #check the defs
+        #register an use
+        
 
     def _array_to_usr(self, array):
         subscripts = []
