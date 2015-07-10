@@ -42,6 +42,7 @@ class UseDefs:
         # tuple (value,usr), where value is a Value node in the df-DAG (place
         # of definition) and usr is USR instance describing the extent of the
         # definition (can change with following partial kills).
+        # {array_data: [(value_node, usr), ...], ...}
         self._array_defs = {}
 
         # This data structure holds the uses of curently valid contents of the
@@ -52,6 +53,7 @@ class UseDefs:
         # every definiton, we use the resulting Value node as a key, and  we
         # keep the list of pairs (value, use) where the value is the result of
         # an operation using the defined data, and USR extent of the use. 
+        # {value_node: [(value_node, usr), ...], ...}
         self._array_uses = {}
 
     def define(self, value_node):
@@ -65,7 +67,7 @@ class UseDefs:
 
         #this seriously needs review
         for old_def in self._array_defs[array.type.data]:
-            if (old_def[1].intersect(def_usr).is_empty()):
+            if old_def[1].intersect(def_usr).is_empty():
                 new_defs.append(old_def)
             else:
                 conflict = def_usr.intersect(old_def[1])
@@ -73,27 +75,38 @@ class UseDefs:
                 if self._array_uses.has_key(old_def[0]):
                     use = self._array_uses[old_def[0]]
                     if not use[1].intesect(conflict).is_empty():
-                        uses.add(self._array_uses.has_key[old_def[0]]) 
+                        uses.add(use[0]) 
 
-                    
-                def_usr = def_usr.complement(conflict)
                 old_def[1] = old_def[1].complement(conflict)
-                
-
-
-
-
-        new_defs = [(value_node, def_usr)] 
+                new_defs.append(old_def)
+        new_defs.append( (value_node, def_usr) )
         self._array_defs[array.type.data] = new_defs
+
+        return list(uses)
         
-    def use(self, value_node):
+    def use(self, in_value_node, out_value_node):
         '''
         Checks the currently valid definitions and returns a list of value
         nodes contributing the required portion of the array. Also registers
-        the use of the definitions for later checks on rewrites.
+        the use of the definitions for later checks on rewrites. 
+
+        in_value_node: defines the array to be accessed and the slice
+
+        out_value_node: result value of the operation: will enter the barriers
         '''
-        #check the defs
-        #register an use
+
+        use_usr = self._array_to_usr(value_node.type)
+        defs = []
+
+        for def_pair in self._array_defs[array.type.data]:
+            if not def_pair[1].intersect(use_usr).is_empty():
+                defs.append(def_pair[0])
+
+        # register the use
+        self._array_uses[in_value_node] = (out_value_node, use_usr)
+
+        return defs
+
         
 
     def _array_to_usr(self, array):
