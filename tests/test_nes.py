@@ -74,19 +74,28 @@ class AstParsingTest(unittest.TestCase):
 
     def slice_test(self):
         py_ast = ast.parse("x[0]")
-        dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ('svar','nodes','modes')})
+        df_dag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': (5,'nodes','modes')})
 
         exp_shape = ('nodes','modes')
-        self.assertTrue(dfdag.values[0].type.shape ==exp_shape or 
-                dfdag.values[1].type.shape ==exp_shape)
+        self.assertTrue(df_dag.values[0].type.shape ==exp_shape or 
+                df_dag.values[1].type.shape ==exp_shape)
 
     def slice_multidim_test(self):
         py_ast = ast.parse("x[0,:,2]")
-        dfdag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': ('svar','nodes','modes')})
+        df_dag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': (4,'nodes',3)})
 
         exp_shape = ('nodes',)
-        self.assertTrue(dfdag.values[0].type.shape ==exp_shape or 
-                dfdag.values[1].type.shape ==exp_shape)
+        self.assertTrue(df_dag.values[0].type.shape ==exp_shape or 
+                df_dag.values[1].type.shape ==exp_shape)
+
+    def multidim_known_dims_test(self):
+        py_ast = ast.parse("x")
+        df_dag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': (4,'nodes',3)})
+        exp_shape = (4,'nodes',3)
+        self.assertTrue(df_dag.values[0].type.data.shape == exp_shape)
+        self.assertTrue(df_dag.values[0].type.shape == exp_shape)
+
+
 
     def type_propagation_test(self):
         py_ast = ast.parse("x = a  + b")
@@ -116,6 +125,7 @@ class AstParsingTest(unittest.TestCase):
                     })
         exp_shape = ('svar','nodes','modes')
         self.assertTrue(dfdag.applies[0].output.type.shape == exp_shape)
+
     def type_scalar_tests(self):
         py_ast = ast.parse("x = a  + b")
         dfdag = nes.ast_to_dfdag(
@@ -128,21 +138,36 @@ class AstParsingTest(unittest.TestCase):
 
     def type_slicing_test(self):
         py_ast = ast.parse("a = c[0]\nb = c[1]\nx = a + b")
-        dfdag = nes.ast_to_dfdag(
+        df_dag = nes.ast_to_dfdag(
                 py_ast, 
                 variable_shapes = {
-                    'c': ('cvar','nodes','modes'),
+                    'c': (3,'nodes','modes'),
                     'x': ('nodes','modes')
                     })
         
-        self.assertTrue(dfdag.applies[0].output.type.shape == ('nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].output.type.slice == ('nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].output.type.data.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].output.type.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].output.type.slice == (':', ':'))
+        self.assertTrue(df_dag.applies[0].output.type.data.shape == ('nodes', 'modes'))
 
-        self.assertTrue(dfdag.applies[0].inputs[0].type.shape == ('nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].inputs[0].type.slice == (0, 'nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].inputs[0].type.data.shape == ('cvar', 'nodes', 'modes'))
-        self.assertTrue(dfdag.applies[0].inputs[0].type.data == dfdag.applies[0].inputs[0].type.data)
+        self.assertTrue(df_dag.applies[0].inputs[0].type.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].inputs[0].type.slice == (0, ':', ':'))
+        self.assertTrue(df_dag.applies[0].inputs[0].type.data.shape == (3, 'nodes', 'modes'))
+        self.assertTrue(df_dag.applies[0].inputs[0].type.data == df_dag.applies[0].inputs[0].type.data)
+
+    def repeated_slice_test(self):
+        py_ast = ast.parse("a = x[0]\nb=a[:,1]")
+        df_dag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'x': (3,'nodes',5),
+                    })
+        shapes = set()
+        for val in df_dag.values:
+            shapes.add(val.type.shape)
+        self.assertTrue((3,'nodes',5) in shapes)
+        self.assertTrue(('nodes',5) in shapes)
+        self.assertTrue(('nodes',) in shapes)
+
 
     def return_test(self):
         py_ast = ast.parse("return x + 1")
@@ -161,12 +186,12 @@ class AstParsingTest(unittest.TestCase):
         dfdag = nes.ast_to_dfdag(
                 py_ast, 
                 variable_shapes = {
-                    'a': ('cvar','nodes','modes'),
+                    'a': (7,'nodes','modes'),
                     'c': 'scalar',
                     'x': ('nodes','modes')
                     })
         self.assertTrue(len(dfdag.results) == 1)
-        self.assertTrue(dfdag.results[0].inputs[0].type.shape == ('cvar','nodes','modes'))
+        self.assertTrue(dfdag.results[0].inputs[0].type.shape == (7,'nodes','modes'))
         # how to test the synchronization properly?? 
         # Maybe rolling upwards from return statement?
 

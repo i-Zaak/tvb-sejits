@@ -24,25 +24,131 @@ import networkx as nx
 import numpy as np
 
 
-import dfdag
+import dfdag, usr
+
+class UseDefs:
+    """
+    This class encapsulates the logic required to track the use-def locations
+    of the contents of arrays. Internal state is updated during parsing with
+    every use and def, so it allows us to correctly represent the semantics of
+    the original code.
+    """
+    def __init__(self):
+        # This data structure holds the reaching definitions of array variables
+        # during parsing. Main index are the instances of ArrayData
+        # (representing the particular array in memory), which are shared by
+        # all references represented by ArrayType instances. For every
+        # ArrayData, we hold the list of all reaching definitions given by a
+        # tuple (value,usr), where value is a Value node in the df-DAG (place
+        # of definition) and usr is USR instance describing the extent of the
+        # definition (can change with following partial kills).
+        # {array_data: [(value_node, usr), ...], ...}
+        self._array_defs = {}
+
+        # This data structure holds the uses of curently valid contents of the
+        # array (see _array_defs above). We consider application of an
+        # operation on an array as an use, excluding "supporting operations",
+        # such as broadcast, create_view, barrier, etc. Every kill has to
+        # synchronize with the operations, which use the invalidated data. For
+        # every definiton, we use the resulting Value node as a key, and  we
+        # keep the list of pairs (value, use) where the value is the result of
+        # an operation using the defined data, and USR extent of the use. 
+        # {value_node: [(value_node, usr), ...], ...}
+        self._array_uses = {}
+
+    def define(self, value_node):
+        '''
+        Defines the contents of an ArrayData to the extent given by the
+        ArrayType slice. Returns list of value nodes, which need to be guarded
+        by a barrier before the kill can take place. 
+        '''
+        def_usr = self._array_to_usr(value_node.type)
+        uses = set()
+
+        #this seriously needs review
+        for old_def in self._array_defs[array.type.data]:
+            if old_def[1].intersect(def_usr).is_empty():
+                new_defs.append(old_def)
+            else:
+                conflict = def_usr.intersect(old_def[1])
+
+                if self._array_uses.has_key(old_def[0]):
+                    use = self._array_uses[old_def[0]]
+                    if not use[1].intesect(conflict).is_empty():
+                        uses.add(use[0]) 
+
+                old_def[1] = old_def[1].complement(conflict)
+                new_defs.append(old_def)
+        new_defs.append( (value_node, def_usr) )
+        self._array_defs[array.type.data] = new_defs
+
+        return list(uses)
+        
+    def use(self, in_value_node, out_value_node):
+        '''
+        Checks the currently valid definitions and returns a list of value
+        nodes contributing the required portion of the array. Also registers
+        the use of the definitions for later checks on rewrites. 
+
+        in_value_node: defines the array to be accessed and the slice
+
+        out_value_node: result value of the operation: will enter the barriers
+        '''
+
+        use_usr = self._array_to_usr(value_node.type)
+        defs = []
+
+        for def_pair in self._array_defs[array.type.data]:
+            if not def_pair[1].intersect(use_usr).is_empty():
+                defs.append(def_pair[0])
+
+        # register the use
+        self._array_uses[in_value_node] = (out_value_node, use_usr)
+
+        return defs
+
+        
+
+    def _array_to_usr(self, array):
+        subscripts = []
+        for i, dim in enumerate(array.data.shape):
+            if isinstance(dim, int):
+                if array.slice[i] == ":":
+                    subscripts.append(dim) # we take this whole dimension
+                else:
+                    # assumes simple slice in this dimension 
+                    assert(isinstance(sl,int))
+                    subscripts.append((sl,sl+1)) 
+            else:
+                # we track only known-sized dimensions
+                pass
+        return usr.USR(subscripts)
 
 
 class DFValueNodeCreator(NodeVisitor):
+
+
+
     def __init__(self, shapes):
         self._value_map = {}
         self.applies = []
+        self.results = []
         self.dfdag = None
         self._variable_map = {}
-        self._array_defs = {}
-        self.results = []
+        self.usedefs = UseDefs()
+
+        
+
         for var in shapes:
             if shapes[var] == 'scalar':
                 self._variable_map[var] = dfdag.Value(type=dfdag.ScalarType())
             else:
-                data = dfdag.ArrayData(shape=shapes[var]) # 
+                data = dfdag.ArrayData(shape=shapes[var]) 
                 value = dfdag.Value(type=dfdag.ArrayType(data=data))
-                self._variable_map[var] = value
-                self._array_defs[data] = [value]
+                self._variable_map[var] = value 
+                val_usr = self._array_to_usr(value.type)
+                self._array_defs[data] = [(value,val_usr)]
+
     
     def createDAG(self):
         values = list(set(self._value_map.values()))
@@ -57,9 +163,17 @@ class DFValueNodeCreator(NodeVisitor):
 
         # what we get from rhs
         val = self._value_map[node.value]
+
         # broadcast or kill?
         if isinstance(target, ast.Subscript):
+            # o broadcast se postarame v ramci subscript, tu se resi use/def
+            # TODO PREPSAT TUTO VSECHNO
             # possibly incomplete kill
+
+            # value corresponding to the synchronized Subscript
+            lhs_val = self._value_map[target] 
+
+
             varval = self._variable_map[target.value.id]
             syncval = dfdag.Value(type=varval.type)
             routine = dfdag.Synchronize()
@@ -72,8 +186,8 @@ class DFValueNodeCreator(NodeVisitor):
             self._variable_map[target.value.id] = syncval
         elif isinstance(target, ast.Name):
             # complete kill
-            if isinstance(val, dfdag.ArrayType):
-                self._array_defs[val.type.data] = [val]
+            if isinstance(val.type, dfdag.ArrayType):
+                self.usedefs.define(val)
             self._variable_map[target.id] = val
             self._value_map[target] = val
         else:
@@ -131,19 +245,24 @@ class DFValueNodeCreator(NodeVisitor):
                     slice_shape[i] = dim.value.n
                 else:
                     assert( dim.lower is None and dim.upper is None and dim.step is None)
-                    pass
+                    # for now, could be generalized using lower/upper/step
+                    slice_shape[i] = ":" 
 
         elif isinstance(node.slice, ast.Index):
             # e.g. x[3]
             slice_shape[0] = node.slice.value.n
+            for i in range(1,len(slice_shape)):
+                slice_shape[i] = ":"
         else:
             # do we need something like x[:] => ast.Slice?
             raise NotImplementedError()
         slice = tuple(slice_shape)
 
         newval = dfdag.Value()
-        newval.type = dfdag.ArrayType( data = sval.type.data, slice=slice)
-        newval.type.data = sval.type.data
+        # poor man's copy constructor
+        newval.type = dfdag.ArrayType( data = sval.type.data, slice=sval.type.slice)
+        # newval.type.data = sval.type.data #TODO Wut? Just remove this.
+        newval.type.apply_slice(slice)
         self._value_map[node] = newval
 
 
