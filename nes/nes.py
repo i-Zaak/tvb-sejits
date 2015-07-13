@@ -300,13 +300,11 @@ def dfdag_to_ctree(dfdag, result):
     cbt.visit(result)
     return 
 
-
-def loop_block_lin(dag, loop_order, variable_names):
-    var_names = variable_names.copy()
-    lin = dag.linearize()
-    raise NotImplementedError()
-
-
+def loop_block_ctree(loop_block, value_deps, value_variable_map):
+    # linearize
+    # allocate memory for new output variables and associate to array value data types
+    # replace applies with assign
+    # if value is not associated with variable, create def
 
 
 

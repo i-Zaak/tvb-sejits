@@ -484,7 +484,7 @@ class CodeGenTest(unittest.TestCase):
         a = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
         b = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
         c = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
-        d = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
+        d = Value(type=ScalarType())
         e = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
         f = Value(type=ScalarType())
         g = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
@@ -499,7 +499,7 @@ class CodeGenTest(unittest.TestCase):
         op2 = Apply(
                 BinOp(ast.Add(),
                     [   ArrayType(data=ArrayData(shape=("nodes",))),
-                        ArrayType(data=ArrayData(shape=("nodes",)))],
+                        ArrayType(data=ScalarType()))],
                     ArrayType(data=ArrayData(shape=("nodes",)))
                 ),
                 [c,d], 
@@ -515,6 +515,7 @@ class CodeGenTest(unittest.TestCase):
         dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
         lb = LoopBlock("nodes")
         lb.applies = [op1, op2, op3]
+        import ipdb; ipdb.set_trace()
 
         self.assertTrue(False) # write me
     def value_collector_test(self):
