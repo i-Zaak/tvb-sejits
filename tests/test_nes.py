@@ -524,7 +524,7 @@ class CodeGenTest(unittest.TestCase):
         op2 = Apply(
                 BinOp(ast.Add(),
                     [   ArrayType(data=ArrayData(shape=("nodes",))),
-                        ArrayType(data=ScalarType()))],
+                        ArrayType(data=ScalarType())],
                     ArrayType(data=ArrayData(shape=("nodes",)))
                 ),
                 [c,d], 
@@ -540,7 +540,6 @@ class CodeGenTest(unittest.TestCase):
         dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
         lb = LoopBlock("nodes")
         lb.applies = [op1, op2, op3]
-        import ipdb; ipdb.set_trace()
 
         self.assertTrue(False) # write me
     def value_collector_test(self):
