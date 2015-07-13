@@ -166,8 +166,9 @@ class DFValueNodeCreator(NodeVisitor):
 
         # broadcast or kill?
         if isinstance(target, ast.Subscript):
-            # possibly incomplete kill, synchronization taken care of in
-            # visit_Subscript down below
+            # o broadcast se postarame v ramci subscript, tu se resi use/def
+            # TODO PREPSAT TUTO VSECHNO
+            # possibly incomplete kill
 
             # value corresponding to the synchronized Subscript
             lhs_val = self._value_map[target] 
