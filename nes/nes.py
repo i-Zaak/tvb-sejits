@@ -99,11 +99,14 @@ class UseDefs:
         defs = []
 
         for def_pair in self._array_defs[in_value_node.type.data]:
-            if not def_pair[1].intersect(use_usr).is_empty():
+            usage = def_pair[1].intersect(use_usr)
+            if not usage.is_empty():
                 defs.append(def_pair[0])
-
-        # register the use
-        self._array_uses[in_value_node] = (out_value_node, use_usr)
+                # register the use
+                if self._array_uses.has_key(def_pair[0]):
+                    self._array_uses[def_pair[0]].append((out_value_node, usage))
+                else:
+                    self._array_uses[def_pair[0]] = [ (out_value_node, usage) ]
 
         return defs
 
