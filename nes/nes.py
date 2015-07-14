@@ -95,10 +95,10 @@ class UseDefs:
         out_value_node: result value of the operation: will enter the barriers
         '''
 
-        use_usr = self._array_to_usr(value_node.type)
+        use_usr = self._array_to_usr(in_value_node.type)
         defs = []
 
-        for def_pair in self._array_defs[array.type.data]:
+        for def_pair in self._array_defs[in_value_node.type.data]:
             if not def_pair[1].intersect(use_usr).is_empty():
                 defs.append(def_pair[0])
 
@@ -146,8 +146,7 @@ class DFValueNodeCreator(NodeVisitor):
                 data = dfdag.ArrayData(shape=shapes[var]) 
                 value = dfdag.Value(type=dfdag.ArrayType(data=data))
                 self._variable_map[var] = value 
-                val_usr = self._array_to_usr(value.type)
-                self._array_defs[data] = [(value,val_usr)]
+                self.usedefs.define(value)
 
     
     def createDAG(self):
@@ -199,6 +198,13 @@ class DFValueNodeCreator(NodeVisitor):
         # inplace operators, implement later if needed
         raise NotImplementedError()
 
+    def _synchronize(self, defs, inp):
+        # we need to merge
+        new_inp = 
+        sync = dfdag.Apply(dfdag.Synchronize(), ins, new_inp)
+        self.applies.append(sync)
+        return new_inp
+
     def visit_BinOp(self, node):
         self.generic_visit(node)
         # TODO subscripts
@@ -209,14 +215,17 @@ class DFValueNodeCreator(NodeVisitor):
             input_types.append( self._value_map[operand].type )
 
         output = dfdag.Value()
+        out_type = ScalarType()
         if isinstance(inputs[0].type, dfdag.ArrayType):
+            ins = self.usedefs.use(inputs[0],output)
+            if len(ins) > 1:
+                
+
             out_type = inputs[0].type.broadcast_with(inputs[1].type)
-            self._array_defs[out_type.data] = [output]
-        elif isinstance(inputs[1].type, dfdag.ArrayType): 
-            out_type = inputs[1].type.broadcast_with(inputs[0].type)
-            self._array_defs[out_type.data] = [output]
-        else:
-            out_type = dfdag.ScalarType()
+        if isinstance(inputs[1].type, dfdag.ArrayType):
+            self.usedefs.use(inputs[1],output)
+            if isinstance(out_type,ScalarType): # in case the first operand is scalar
+                out_type = inputs[1].type.broadcast_with(inputs[0].type)
 
         output.type=out_type
         self._value_map[node] = output
@@ -283,6 +292,7 @@ class DFValueNodeCreator(NodeVisitor):
         self.generic_visit(node)
         sval = self._value_map[node.value]
         ret = dfdag.Apply(dfdag.Return(), [sval], None) 
+        self.usedefs.use(sval,None)
         self.results.append(ret)
 
 
