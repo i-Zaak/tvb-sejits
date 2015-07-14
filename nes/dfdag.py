@@ -242,12 +242,21 @@ class Broadcast(Routine):
     the actual memory destination in the target ArrayData. Shape of source and
     target should to match.
     """
-    def __init__(self, source, target):
-        self.source = source
-        self.target = target
+    # just use the aply inputs, outputs...
+    #def __init__(self, source, target):
+    #    self.source = source
+    #    self.target = target
+    pass
 
 class Synchronize(Routine):
     # array access synchronization (sliced access)
+    pass
+
+class ArrayView(Routine):
+    '''
+    Denotes creation of view on an array, aka visit-subscript as opposed to
+    Broadcast, which is definition-subscript
+    '''
     pass
 
 class Return(Routine):
