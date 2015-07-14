@@ -224,12 +224,12 @@ class DFValueNodeCreator(NodeVisitor):
         if isinstance(inputs[0].type, dfdag.ArrayType):
             ins = self.usedefs.use(inputs[0],output)
             if len(ins) > 1:
-                inputs[0] = self._synchronize(ins,input[0])
+                inputs[0] = self._synchronize(ins,inputs[0])
             out_type = inputs[0].type.broadcast_with(inputs[1].type)
         if isinstance(inputs[1].type, dfdag.ArrayType):
             self.usedefs.use(inputs[1],output)
             if len(ins) > 1:
-                inputs[1] = self._synchronize(ins,input[1])
+                inputs[1] = self._synchronize(ins,inputs[1])
             if isinstance(out_type,ScalarType): # in case the first operand is scalar
                 out_type = inputs[1].type.broadcast_with(inputs[0].type)
 
@@ -297,8 +297,10 @@ class DFValueNodeCreator(NodeVisitor):
     def visit_Return(self, node):
         self.generic_visit(node)
         sval = self._value_map[node.value]
+        syncvals = self.usedefs.use(sval,None)
+        if len(syncvals) > 1:
+            sval = self._synchronize(syncvals,sval)
         ret = dfdag.Apply(dfdag.Return(), [sval], None) 
-        self.usedefs.use(sval,None)
         self.results.append(ret)
 
 
