@@ -199,15 +199,20 @@ class DFValueNodeCreator(NodeVisitor):
         raise NotImplementedError()
 
     def _synchronize(self, defs, inp):
-        # we need to merge
-        new_inp = 
+        '''
+        Takes the collected definitions, creates a synchronization Apply node,
+        and returns the resulting value node.
+        '''
+
+        # poor man's copy constructor -- TODO refactor to dfdag
+        new_inp = dfdag.Value() 
+        new_inp.type = dfdag.ArrayType( data = inp.type.data, slice=inp.type.slice)
         sync = dfdag.Apply(dfdag.Synchronize(), ins, new_inp)
         self.applies.append(sync)
         return new_inp
 
     def visit_BinOp(self, node):
         self.generic_visit(node)
-        # TODO subscripts
         inputs = []
         input_types = []
         for operand in [node.left, node.right]:
@@ -219,11 +224,12 @@ class DFValueNodeCreator(NodeVisitor):
         if isinstance(inputs[0].type, dfdag.ArrayType):
             ins = self.usedefs.use(inputs[0],output)
             if len(ins) > 1:
-                
-
+                inputs[0] = self._synchronize(ins,input[0])
             out_type = inputs[0].type.broadcast_with(inputs[1].type)
         if isinstance(inputs[1].type, dfdag.ArrayType):
             self.usedefs.use(inputs[1],output)
+            if len(ins) > 1:
+                inputs[1] = self._synchronize(ins,input[1])
             if isinstance(out_type,ScalarType): # in case the first operand is scalar
                 out_type = inputs[1].type.broadcast_with(inputs[0].type)
 
