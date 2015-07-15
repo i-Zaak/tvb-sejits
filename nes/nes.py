@@ -157,6 +157,21 @@ class DFValueNodeCreator(NodeVisitor):
         
         return dfdag.DFDAG(self.applies, values, self.results)
 
+    def _synchronize(self, defs, inp):
+        '''
+        Takes the collected definitions, creates a synchronization Apply node,
+        and returns the resulting value node.
+        '''
+
+        # poor man's copy constructor -- TODO refactor to dfdag
+        ins = [inp]
+        ins.extend(defs)
+        new_inp = dfdag.Value() 
+        new_inp.type = dfdag.ArrayType( data = inp.type.data, slice=inp.type.slice)
+        sync = dfdag.Apply(dfdag.Synchronize(), ins, new_inp)
+        self.applies.append(sync)
+        return new_inp
+
     def visit_Assign(self,node):
         self.generic_visit(node)
         if len(node.targets ) > 1:
@@ -166,26 +181,20 @@ class DFValueNodeCreator(NodeVisitor):
         # what we get from rhs
         val = self._value_map[node.value]
 
-        # broadcast or kill?
         if isinstance(target, ast.Subscript):
-            # o broadcast se postarame v ramci subscript, tu se resi use/def
-            # TODO PREPSAT TUTO VSECHNO
             # possibly incomplete kill
 
             # value corresponding to the synchronized Subscript
             lhs_val = self._value_map[target] 
+            killed_defs = self.usedefs.define(lhs_val)
 
+            syncval = self._synchronize(killed_defs, val)
 
-            varval = self._variable_map[target.value.id]
-            syncval = dfdag.Value(type=varval.type)
-            routine = dfdag.Synchronize()
-            inputs = list(self._array_defs[varval.type.data])
-            inputs.append(val)
-            self._array_defs[varval.type.data].append(syncval)
-            sync = dfdag.Apply(routine, inputs, syncval)
-            self.applies.append(sync)
-            self._value_map[node] = syncval
-            self._variable_map[target.value.id] = syncval
+            bcast = dfdag.Apply(dfdag.Broadcast(), [syncval], lhs_val)
+            self.applies.append(bcast)
+
+            self._value_map[node] = lhs_val # do we need this at all?
+            self._variable_map[target.value.id] = lhs_val # is this useful? Is this needed?
         elif isinstance(target, ast.Name):
             # complete kill
             if isinstance(val.type, dfdag.ArrayType):
@@ -201,18 +210,6 @@ class DFValueNodeCreator(NodeVisitor):
         # inplace operators, implement later if needed
         raise NotImplementedError()
 
-    def _synchronize(self, defs, inp):
-        '''
-        Takes the collected definitions, creates a synchronization Apply node,
-        and returns the resulting value node.
-        '''
-
-        # poor man's copy constructor -- TODO refactor to dfdag
-        new_inp = dfdag.Value() 
-        new_inp.type = dfdag.ArrayType( data = inp.type.data, slice=inp.type.slice)
-        sync = dfdag.Apply(dfdag.Synchronize(), ins, new_inp)
-        self.applies.append(sync)
-        return new_inp
 
     def visit_BinOp(self, node):
         self.generic_visit(node)
@@ -424,7 +421,7 @@ class DependencyCollector(DFDAGVisitor):
         self.generic_visit(node)
 
 
-
+# TODO refactor this to DFValueNodeCreator and rename to dfdag creator
 def ast_to_dfdag(py_ast, variable_shapes={}):
     tree = monkeytrans.ParentNodeTransformer().visit(py_ast)
     tree = RemoveComments().visit(py_ast)
