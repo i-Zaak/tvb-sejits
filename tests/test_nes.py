@@ -195,6 +195,18 @@ class AstParsingTest(unittest.TestCase):
         # how to test the synchronization properly?? 
         # Maybe rolling upwards from return statement?
 
+    def partial_kill_test(self):
+        py_ast = ast.parse("c = a + 1\na[0,:] = 1\na[1,:] = 2\nb = a + c")
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                variable_shapes = {
+                    'a': (2,'nodes','modes'),
+                    })
+
+        import ipdb; ipdb.set_trace()
+
+
+
 class VisitorTest(unittest.TestCase):
     def walker_test(self):
         class TestWalker(nes.DFDAGVisitor):

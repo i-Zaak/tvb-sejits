@@ -64,23 +64,25 @@ class UseDefs:
         '''
         def_usr = self._array_to_usr(value_node.type)
         uses = set()
+        new_defs = []
 
         #this seriously needs review
-        for old_def in self._array_defs[array.type.data]:
-            if old_def[1].intersect(def_usr).is_empty():
-                new_defs.append(old_def)
-            else:
-                conflict = def_usr.intersect(old_def[1])
+        if self._array_defs.has_key(value_node.type.data):
+            for old_def in self._array_defs[value_node.type.data]:
+                if old_def[1].intersect(def_usr).is_empty():
+                    new_defs.append(old_def)
+                else:
+                    conflict = def_usr.intersect(old_def[1])
 
-                if self._array_uses.has_key(old_def[0]):
-                    use = self._array_uses[old_def[0]]
-                    if not use[1].intesect(conflict).is_empty():
-                        uses.add(use[0]) 
+                    if self._array_uses.has_key(old_def[0]):
+                        for use in self._array_uses[old_def[0]]:
+                            if not use[1].intersect(conflict).is_empty():
+                                uses.add(use[0]) 
 
-                old_def[1] = old_def[1].complement(conflict)
-                new_defs.append(old_def)
+                    list(old_def)[1] = old_def[1].complement(conflict)
+                    new_defs.append(tuple(old_def))
         new_defs.append( (value_node, def_usr) )
-        self._array_defs[array.type.data] = new_defs
+        self._array_defs[value_node.type.data] = new_defs
 
         return list(uses)
         
@@ -120,8 +122,8 @@ class UseDefs:
                     subscripts.append(dim) # we take this whole dimension
                 else:
                     # assumes simple slice in this dimension 
-                    assert(isinstance(sl,int))
-                    subscripts.append((sl,sl+1)) 
+                    assert(isinstance(dim,int))
+                    subscripts.append((dim,dim+1)) 
             else:
                 # we track only known-sized dimensions
                 pass
@@ -157,17 +159,17 @@ class DFValueNodeCreator(NodeVisitor):
         
         return dfdag.DFDAG(self.applies, values, self.results)
 
-    def _synchronize(self, defs, inp):
+    def _synchronize(self, defs, dest):
         '''
         Takes the collected definitions, creates a synchronization Apply node,
         and returns the resulting value node.
         '''
 
         # poor man's copy constructor -- TODO refactor to dfdag
-        ins = [inp]
+        ins = []
         ins.extend(defs)
         new_inp = dfdag.Value() 
-        new_inp.type = dfdag.ArrayType( data = inp.type.data, slice=inp.type.slice)
+        new_inp.type = dfdag.ArrayType( data = dest.type.data, slice=dest.type.slice)
         sync = dfdag.Apply(dfdag.Synchronize(), ins, new_inp)
         self.applies.append(sync)
         return new_inp
@@ -188,13 +190,14 @@ class DFValueNodeCreator(NodeVisitor):
             lhs_val = self._value_map[target] 
             killed_defs = self.usedefs.define(lhs_val)
 
-            syncval = self._synchronize(killed_defs, val)
+            
+            syncval = self._synchronize(killed_defs, lhs_val)
 
-            bcast = dfdag.Apply(dfdag.Broadcast(), [syncval], lhs_val)
+            bcast = dfdag.Apply(dfdag.Broadcast(), [syncval,val], lhs_val)
             self.applies.append(bcast)
 
             self._value_map[node] = lhs_val # do we need this at all?
-            self._variable_map[target.value.id] = lhs_val # is this useful? Is this needed?
+            #self._variable_map[target.value.id] = lhs_val # is this useful? Is this needed?
         elif isinstance(target, ast.Name):
             # complete kill
             if isinstance(val.type, dfdag.ArrayType):
@@ -220,7 +223,7 @@ class DFValueNodeCreator(NodeVisitor):
             input_types.append( self._value_map[operand].type )
 
         output = dfdag.Value()
-        out_type = ScalarType()
+        out_type = dfdag.ScalarType()
         if isinstance(inputs[0].type, dfdag.ArrayType):
             ins = self.usedefs.use(inputs[0],output)
             if len(ins) > 1:
@@ -230,7 +233,7 @@ class DFValueNodeCreator(NodeVisitor):
             self.usedefs.use(inputs[1],output)
             if len(ins) > 1:
                 inputs[1] = self._synchronize(ins,inputs[1])
-            if isinstance(out_type,ScalarType): # in case the first operand is scalar
+            if isinstance(out_type,dfdag.ScalarType): # in case the first operand is scalar
                 out_type = inputs[1].type.broadcast_with(inputs[0].type)
 
         output.type=out_type
@@ -262,6 +265,10 @@ class DFValueNodeCreator(NodeVisitor):
                     assert( dim.lower is None and dim.upper is None and dim.step is None)
                     # for now, could be generalized using lower/upper/step
                     slice_shape[i] = ":" 
+            for i in range(len(node.slice.dims), len(slice_shape)):
+                # cover ":" spreading over multiple tailing dimensions
+                slice_shape[i] = ":"
+            
 
         elif isinstance(node.slice, ast.Index):
             # e.g. x[3]
