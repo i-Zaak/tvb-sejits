@@ -32,6 +32,8 @@ class USR:
         else:
             ranges = tuple(map(lambda x: Range(x) if isinstance(x,int) else Range(*x), subscripts))
             self._symbolic_set = ProductSet(*ranges)
+    def __repr__(self):
+        return "<USR: " + str(self._symbolic_set) + ">"
     
     def intersect(self, other):
         usr = USR()

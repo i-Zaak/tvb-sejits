@@ -79,7 +79,8 @@ class UseDefs:
                             if not use[1].intersect(conflict).is_empty():
                                 uses.add(use[0]) 
 
-                    list(old_def)[1] = old_def[1].complement(conflict)
+                    old_def = list(old_def)
+                    old_def[1] = old_def[1].complement(conflict)
                     new_defs.append(tuple(old_def))
         new_defs.append( (value_node, def_usr) )
         self._array_defs[value_node.type.data] = new_defs
@@ -122,13 +123,15 @@ class UseDefs:
                     subscripts.append(dim) # we take this whole dimension
                 else:
                     # assumes simple slice in this dimension 
-                    assert(isinstance(dim,int))
-                    subscripts.append((dim,dim+1)) 
+                    assert(isinstance(array.slice[i],int))
+                    subscripts.append((array.slice[i],array.slice[i]+1)) 
             else:
                 # we track only known-sized dimensions
                 pass
         return usr.USR(subscripts)
 
+#    def __repr__(self):
+#        return "<USR: defs "+str(self._array_defs)  +"| uses " + str(self._array_uses)+">"
 
 class DFValueNodeCreator(NodeVisitor):
 
@@ -155,7 +158,13 @@ class DFValueNodeCreator(NodeVisitor):
 
     
     def createDAG(self):
-        values = list(set(self._value_map.values()))
+        #values = list(set(self._value_map.values()))
+        values = set()
+        for appl in self.applies:
+            for inp in appl.inputs:
+                values.add(inp)
+            values.add(appl.output)
+        values = list(values)
         
         return dfdag.DFDAG(self.applies, values, self.results)
 
@@ -207,6 +216,7 @@ class DFValueNodeCreator(NodeVisitor):
         else:
             # E.g. no attributes. Not now, not later.
             raise NotImplementedError()
+        import ipdb; ipdb.set_trace()
 
         
     def visit_AugAssign(self, node):
@@ -237,6 +247,9 @@ class DFValueNodeCreator(NodeVisitor):
                 out_type = inputs[1].type.broadcast_with(inputs[0].type)
 
         output.type=out_type
+        if isinstance(out_type, dfdag.ArrayType):
+            self.usedefs.define(output) # binary operator always creates a copy
+
         self._value_map[node] = output
         
         routine = dfdag.BinOp(
@@ -245,6 +258,7 @@ class DFValueNodeCreator(NodeVisitor):
                 output_type = out_type) 
         app = dfdag.Apply(routine, inputs, output)
         self.applies.append(app)
+        import ipdb; ipdb.set_trace()
             
 
     def visit_Subscript(self, node):
