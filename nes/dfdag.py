@@ -23,7 +23,7 @@ class DFDAG:
         return nx.topological_sort(self.nx_representation())
 
     def to_dot(self):
-        d_str = 'digraph {\n'
+        d_str = 'digraph {\nrankdir = BT;\n'
         for value in self.values:
             d_str += '%d [label="%s",shape=box]\n' % (id(value), str(value))
         for apply in self.applies:
