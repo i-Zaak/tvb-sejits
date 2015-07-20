@@ -203,7 +203,8 @@ class AstParsingTest(unittest.TestCase):
                     'a': (2,'nodes','modes'),
                     })
 
-        import ipdb; ipdb.set_trace()
+        # Should test for correct synchronization structure
+        self.assertTrue(False, "TODO: write me!")
 
 
 

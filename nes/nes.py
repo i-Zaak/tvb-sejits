@@ -216,7 +216,6 @@ class DFValueNodeCreator(NodeVisitor):
         else:
             # E.g. no attributes. Not now, not later.
             raise NotImplementedError()
-        import ipdb; ipdb.set_trace()
 
         
     def visit_AugAssign(self, node):
@@ -240,7 +239,7 @@ class DFValueNodeCreator(NodeVisitor):
                 inputs[0] = self._synchronize(ins,inputs[0])
             out_type = inputs[0].type.broadcast_with(inputs[1].type)
         if isinstance(inputs[1].type, dfdag.ArrayType):
-            self.usedefs.use(inputs[1],output)
+            ins = self.usedefs.use(inputs[1],output)
             if len(ins) > 1:
                 inputs[1] = self._synchronize(ins,inputs[1])
             if isinstance(out_type,dfdag.ScalarType): # in case the first operand is scalar
@@ -258,7 +257,6 @@ class DFValueNodeCreator(NodeVisitor):
                 output_type = out_type) 
         app = dfdag.Apply(routine, inputs, output)
         self.applies.append(app)
-        import ipdb; ipdb.set_trace()
             
 
     def visit_Subscript(self, node):
