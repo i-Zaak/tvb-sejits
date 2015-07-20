@@ -130,11 +130,11 @@ class UseDefs:
                 pass
         return usr.USR(subscripts)
 
-#    def __repr__(self):
-#        return "<USR: defs "+str(self._array_defs)  +"| uses " + str(self._array_uses)+">"
 
 class DFValueNodeCreator(NodeVisitor):
-
+    '''
+    This visitor transforms the python AST to df-DAG.
+    '''
 
 
     def __init__(self, shapes):
@@ -158,8 +158,7 @@ class DFValueNodeCreator(NodeVisitor):
 
     
     def createDAG(self):
-        #values = list(set(self._value_map.values()))
-        values = set()
+        values = set(self._value_map.values())
         for appl in self.applies:
             for inp in appl.inputs:
                 values.add(inp)

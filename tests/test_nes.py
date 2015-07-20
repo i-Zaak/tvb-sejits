@@ -89,7 +89,7 @@ class AstParsingTest(unittest.TestCase):
                 df_dag.values[1].type.shape ==exp_shape)
 
     def multidim_known_dims_test(self):
-        py_ast = ast.parse("x + x")
+        py_ast = ast.parse("x")
         df_dag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': (4,'nodes',3)})
         exp_shape = (4,'nodes',3)
         self.assertTrue(df_dag.values[0].type.data.shape == exp_shape)
@@ -145,14 +145,14 @@ class AstParsingTest(unittest.TestCase):
                     'x': ('nodes','modes')
                     })
         
-        self.assertTrue(df_dag.applies[0].output.type.shape == ('nodes', 'modes'))
-        self.assertTrue(df_dag.applies[0].output.type.slice == (':', ':'))
-        self.assertTrue(df_dag.applies[0].output.type.data.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[1].output.type.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[1].output.type.slice == (':', ':'))
+        self.assertTrue(df_dag.applies[1].output.type.data.shape == ('nodes', 'modes'))
 
-        self.assertTrue(df_dag.applies[0].inputs[0].type.shape == ('nodes', 'modes'))
-        self.assertTrue(df_dag.applies[0].inputs[0].type.slice == (0, ':', ':'))
-        self.assertTrue(df_dag.applies[0].inputs[0].type.data.shape == (3, 'nodes', 'modes'))
-        self.assertTrue(df_dag.applies[0].inputs[0].type.data == df_dag.applies[0].inputs[0].type.data)
+        self.assertTrue(df_dag.applies[1].inputs[0].type.shape == ('nodes', 'modes'))
+        self.assertTrue(df_dag.applies[1].inputs[0].type.slice == (0, ':', ':'))
+        self.assertTrue(df_dag.applies[1].inputs[0].type.data.shape == (3, 'nodes', 'modes'))
+        self.assertTrue(df_dag.applies[1].inputs[0].type.data == df_dag.applies[1].inputs[1].type.data)
 
     def repeated_slice_test(self):
         py_ast = ast.parse("a = x[0]\nb=a[:,1]")
@@ -197,7 +197,7 @@ class AstParsingTest(unittest.TestCase):
 
     def partial_kill_test(self):
         py_ast = ast.parse("c = a + 1\na[0,:] = 1\na[1,:] = 2\nb = a + c")
-        dfdag = nes.ast_to_dfdag(
+        df_dag = nes.ast_to_dfdag(
                 py_ast, 
                 variable_shapes = {
                     'a': (2,'nodes','modes'),
@@ -537,7 +537,7 @@ class CodeGenTest(unittest.TestCase):
         op2 = Apply(
                 BinOp(ast.Add(),
                     [   ArrayType(data=ArrayData(shape=("nodes",))),
-                        ArrayType(data=ScalarType())],
+                        ScalarType()],
                     ArrayType(data=ArrayData(shape=("nodes",)))
                 ),
                 [c,d], 
