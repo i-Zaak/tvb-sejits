@@ -464,7 +464,7 @@ class DFDAGTopowalker(ast.NodeVisitor):
         # there is nothing to do, next!
         pass
 
-class CtreeConvertor(DFDAGTopowalker):
+class CtreeBuilder(DFDAGTopowalker):
     '''
     Walks the linearization and builds a Ctree representation from the Apply nodes. Makes sure every needed 
     '''
@@ -490,21 +490,30 @@ class CtreeConvertor(DFDAGTopowalker):
         #TODO make sure this doesn't collide with anything outside..
         return "t_" + str(self._last_symbol_number)
 
+    def _translate_scalar_routine(self, routine, inputs, output):
+        # TODO write me!
+        if isinstance(routine, dfdag.BinOp):
+            PyBasicConversions.PY_OP_TO_CTREE_OP[node.routine.op]()
+        else:
+            raise NotImplementedError("TODO: handle other routines")
+
     def visit_Apply(self, node):
         if isinstance(node.routine, dfdag.Synchronize()):
             # just a helper routine, ignore
             return
+        if isinstance(node.routine, dfdag.Return()):
+            raise NotImplementedError("TODO: handling return statements.")
         if isinstance(node.output.type, dfdag.ScalarType):
-            sym = self._new_symbol()
-            self.scalar_symbols[node.output] = sym
+            out_sym = self._new_symbol()
+            self.scalar_symbols[node.output] = out_sym
+            in_syms = []
+            for input in node.inputs:
+                in_syms.append( self.scalar_symbols[input] )
+            rhs = self._translate_scalar_routine(node.routine, in_syms, out_sym)
             self._code.append(
                     Assign(
                         SymbolRef(sym, ctypes.c_double),
-                        BinaryOp(
-                            
-                            PyBasicConversions.PY_OP_TO_CTREE_OP[node.routine.op]()
-                            )
-
+                        rhs
                         )
                     )
         else:
