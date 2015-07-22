@@ -448,12 +448,69 @@ def ast_to_dfdag(py_ast, variable_shapes={}):
     dvn.visit(py_ast)
     return dvn.createDAG()
 
-def dfdag_to_ctree(dfdag, result):
-    # TODO deal with loop blocks
-    cbt = CtreeBlockTranslator(dfdag.applies)
+class DFDAGTopowalker(ast.NodeVisitor):
+    '''
+    Walks the toplogical sort of a df-DAG.
+    '''
+    def __init__(self, dfdag):
+        self._dfdag = dfdag
 
-    cbt.visit(result)
-    return 
+    def walk(self):
+        linearization = dfdag.linearize()
+        for node in linearization:
+            self.visit(node)
+
+    def generic_visit(self, node):
+        # there is nothing to do, next!
+        pass
+
+class CtreeConvertor(DFDAGTopowalker):
+    '''
+    Walks the linearization and builds a Ctree representation from the Apply nodes. Makes sure every needed 
+    '''
+
+    def __init__(self, dfdag):
+        super(CtreeConvertor,self).__init__(dfdag)
+
+        '''
+        Following two dictionaries keeps the mapping from Value nodes to
+        symbols in the generated code. The scalar symbols are indexed by the
+        Value node and are singular {Value: string}, whereas the array symbols
+        are indexed by ArrayData and multiple symbols can correspond to single
+        ArrayData {ArrayData: [string, string, ...]}. The symbols are unique
+        across both types.
+        '''
+        self.scalar_symbols = {}
+        self.array_symbols = {}
+        self._last_symbol_number = 0
+        self._code = []
+        # TODO register inputs?
+
+    def _new_symbol(self):
+        #TODO make sure this doesn't collide with anything outside..
+        return "t_" + str(self._last_symbol_number)
+
+    def visit_Apply(self, node):
+        if isinstance(node.routine, dfdag.Synchronize()):
+            # just a helper routine, ignore
+            return
+        if isinstance(node.output.type, dfdag.ScalarType):
+            sym = self._new_symbol()
+            self.scalar_symbols[node.output] = sym
+            self._code.append(
+                    Assign(
+                        SymbolRef(sym, ctypes.c_double),
+                        BinaryOp(
+                            
+                            PyBasicConversions.PY_OP_TO_CTREE_OP[node.routine.op]()
+                            )
+
+                        )
+                    )
+        else:
+            #just in case...
+            assert( isinstance(node.output.type, dfdag.ArrayData) )
+            #array op
 
 def loop_block_ctree(loop_block, value_deps, value_variable_map):
     # linearize
