@@ -490,7 +490,7 @@ class CtreeBuilder(DFDAGTopowalker):
         #TODO make sure this doesn't collide with anything outside..
         return "t_" + str(self._last_symbol_number)
 
-    def _translate_scalar_routine(self, routine, inputs, output):
+    def _translate_routine(self, routine, inputs, output):
         # TODO write me!
         if isinstance(routine, dfdag.BinOp):
             PyBasicConversions.PY_OP_TO_CTREE_OP[node.routine.op]()
