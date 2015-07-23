@@ -4,7 +4,7 @@ Specializers for neural ensamble models. To be used together with TVB.
 
 from ctree.jit import LazySpecializedFunction, ConcreteSpecializedFunction
 from ctree.visitors import NodeTransformer, NodeVisitor
-from ctree.c.nodes import FunctionCall, CFile, Assign, ArrayRef, SymbolRef, Constant, Op, UnaryOp, Deref, For, Lt, PostInc, BinaryOp
+import  ctree.c.nodes as ctcn #FunctionCall, CFile, Assign, ArrayRef, SymbolRef, Constant, Op, UnaryOp, Deref, For, Lt, PostInc, BinaryOp
 from ctree.cpp.nodes import CppInclude #TODO refactor to C?
 from ctree.nodes import Project
 from ctree.transformations import PyBasicConversions
@@ -468,7 +468,9 @@ class CtreeBuilder(DFDAGTopowalker):
     '''
     Walks the linearization and builds a Ctree representation from the Apply nodes. Makes sure every needed 
     '''
+    
 
+    def
     def __init__(self, dfdag):
         super(CtreeConvertor,self).__init__(dfdag)
 
@@ -490,12 +492,50 @@ class CtreeBuilder(DFDAGTopowalker):
         #TODO make sure this doesn't collide with anything outside..
         return "t_" + str(self._last_symbol_number)
 
+    def _loop_index_symbols(self,shape):
+        indices = []
+        for i, dim in enumerate(shape):
+            indices.add( 'i_' + str(i) )
+        return indices
+
+
+    #
+    #   Routines
+    #
     def _translate_routine(self, routine, inputs, output):
-        # TODO write me!
-        if isinstance(routine, dfdag.BinOp):
-            PyBasicConversions.PY_OP_TO_CTREE_OP[node.routine.op]()
-        else:
-            raise NotImplementedError("TODO: handle other routines")
+        method = '_translate_' + routine.__class__.__name__
+        translate = getattr(self, method) # exception for not implemented  
+        return translate(routine, inputs, output)
+    
+    def _translate_BinOp(routine, inputs, output):
+        op = ctcn.PyBasicConversions.PY_OP_TO_CTREE_OP[node.routine.op]()
+        return ctcn.Assign(ouput, ctcn.BinaryOp(inputs[0], op, inputs[1]))
+    # TODO other routines, such as numpy functions
+
+
+    # 
+    #   Scalar values
+    # 
+    def _translate_scalar_value(self, value):
+        # constants, scalars and whole array references
+        method = '_translate_' + value.type.__class__.__name__
+        translate = getattr(self, method) # exception for not implemented  
+        return translate(value)
+
+    def _translate_ScalarType(self,value):
+        return ctcn.SymbolRef(self.scalar_symbols[value])
+
+    def _translate_Constant(self,value):
+        return ctcn.Constant(value.type.number)
+
+    #
+    #   Indexed values
+    #
+    def _translate_indexed_value(self, value):
+        raise NotImplementedError("TODO deal with indexed acces to array values")
+
+
+    def _allocate_array(self, value ):
 
     def visit_Apply(self, node):
         if isinstance(node.routine, dfdag.Synchronize()):
@@ -506,20 +546,26 @@ class CtreeBuilder(DFDAGTopowalker):
         if isinstance(node.output.type, dfdag.ScalarType):
             out_sym = self._new_symbol()
             self.scalar_symbols[node.output] = out_sym
-            in_syms = []
+            out_ct =  ctcn.SymbolRef(out_sym, ctypes.c_double),
+            
+            in_cts = []
             for input in node.inputs:
-                in_syms.append( self.scalar_symbols[input] )
-            rhs = self._translate_scalar_routine(node.routine, in_syms, out_sym)
-            self._code.append(
-                    Assign(
-                        SymbolRef(sym, ctypes.c_double),
-                        rhs
-                        )
-                    )
+                in_cts = yms.append( self.scalar_symbols[input] )
+
+            c_code = self._translate_routine(node.routine, in_cts, out_c)
+            self._code.append( c_code ) 
         else:
             #just in case...
             assert( isinstance(node.output.type, dfdag.ArrayData) )
-            #array op
+
+            if not self.array_symbols.has_key(node.output.type):
+                # allocate and create symbol
+                out_sym = self._new_symbol()
+                self._code.append( self._allocate_array(node.output, out_sym))
+
+
+
+            raise NotImplementedError("TODO very soon")
 
 def loop_block_ctree(loop_block, value_deps, value_variable_map):
     # linearize
