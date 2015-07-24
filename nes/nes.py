@@ -470,9 +470,8 @@ class CtreeBuilder(DFDAGTopowalker):
     '''
     
 
-    def
     def __init__(self, dfdag):
-        super(CtreeConvertor,self).__init__(dfdag)
+        super(CtreeBuilder,self).__init__(dfdag)
 
         '''
         Following two dictionaries keeps the mapping from Value nodes to
@@ -481,22 +480,15 @@ class CtreeBuilder(DFDAGTopowalker):
         are indexed by ArrayData and multiple symbols can correspond to single
         ArrayData {ArrayData: [string, string, ...]}. The symbols are unique
         across both types.
+
+        The dimension symbols is a table of known variables describing the
+        problem-instance dependent sizes of particular arrays. {string:string}
         '''
         self.scalar_symbols = {}
         self.array_symbols = {}
-        self._last_symbol_number = 0
-        self._code = []
+        self.dimension_symbols = {}
+        self.c_ast = []
         # TODO register inputs?
-
-    def _new_symbol(self):
-        #TODO make sure this doesn't collide with anything outside..
-        return "t_" + str(self._last_symbol_number)
-
-    def _loop_index_symbols(self,shape):
-        indices = []
-        for i, dim in enumerate(shape):
-            indices.add( 'i_' + str(i) )
-        return indices
 
 
     #
@@ -514,28 +506,105 @@ class CtreeBuilder(DFDAGTopowalker):
 
 
     # 
-    #   Scalar values
+    #    Values
     # 
-    def _translate_scalar_value(self, value):
+    def _translate_value(self, value):
         # constants, scalars and whole array references
         method = '_translate_' + value.type.__class__.__name__
         translate = getattr(self, method) # exception for not implemented  
         return translate(value)
 
     def _translate_ScalarType(self,value):
-        return ctcn.SymbolRef(self.scalar_symbols[value])
+        return self.scalar_symbols[value].copy()
 
     def _translate_Constant(self,value):
         return ctcn.Constant(value.type.number)
 
-    #
-    #   Indexed values
-    #
-    def _translate_indexed_value(self, value):
-        raise NotImplementedError("TODO deal with indexed acces to array values")
+    def _translate_ArrayType(self,value):
+        # this should be properly indexed according to loop context
+        if self._index_map is not None:
+            # 
+            return self_add_indexing(value.type, self._index_map)
+        else:
+            return ctcn.array_symbols[value.type.data].copy()
 
+    #
+    #   Indexed values. We assume to recieve correct broadcasting shapes here.
+    #
+    def _shape_size_to_symbol(self, dim):
+        if isinstance(dim, str):
+            return ctcn.SymbolRef(self.dimension_symbols[dim])
+        else:
+            assert isinstance(dim, int)
+            return ctcn.Constant(dim)
+    
 
-    def _allocate_array(self, value ):
+    def _allocate_array(self, array_data):
+        # symbol should be pointer declaration...
+        sym = ctcn.SymbolRef.unique("a",ctypes.POINTER(ctypes.c_double)())
+        self.array_symbols[array_data] = sym.copy()
+
+        array_size = ctcn.SizeOf(sym.copy() )
+        for dim in array_data.shape:
+            array_size = ctcn.Mul(self._shape_size_to_symbol(dim),array_size)
+
+        malloc_ast = ctcn.Cast(
+                sym_type=ctypes.c_double(), 
+                value=ctcn.FunctionCall(
+                    'malloc',
+                    array_size
+                    )
+                )
+
+        return ctcn.Assign(sym, malloc_ast)
+
+    
+    def _add_indexing(self, array_type):
+        """
+        Takes an array (defined by array_type) and applies indexing from loop
+        nest context given by index_map. The index map can be longer than shape
+        of the array because of numpy broadcasts. 
+        """
+        # this seriously needs review
+
+        summands = []
+        shape_dim = 0
+        for i, j in enumerate(range(len(self._index_map)-len(array_type.slice),len(self._index_map) )):
+            if isinstance(array_type.slice[i], int):
+                # constant slice offset
+                mul = ctcn.Constant(array_type.slice[i]) 
+            else:
+                # iteration dimension
+                mul = self._index_map[j][0].copy()
+
+            # multiply by sizes of trailing dimensions
+            for k in range(i+1,len(array_type.data.shape)):
+                mul = ctcn.Mul(mul, self._shape_size_to_symbol(array_type.data.shape[k]))
+            summands.add(mul)    
+
+        #sum things up
+        index = summands[0] # there better be something...
+        for i in range(1,len(summands[i])):
+            index = ctcn.Add(summands[i], index)
+
+        return ctcn.ArrayRef(self.array_symbols[array_type].copy(), index)
+
+    def _create_loop_nest(self, routine, in_cs, out_cs):
+        """
+            Derives the number of loops and indices from output shape and wraps
+            the given loop nest_body.
+        """
+
+        body_c_ast = self._translate_routine(routine, in_cs, out_cs)
+        for dim, size in self._index_map:
+            body_c_ast = For(
+                    Assign(dim.copy(), Constant(0)),
+                    Lt(dim.copy(), size),
+                    PostInc(dim.copy()), 
+                    [body_c_ast]
+                    )
+        return body_c_ast
+
 
     def visit_Apply(self, node):
         if isinstance(node.routine, dfdag.Synchronize()):
@@ -543,36 +612,57 @@ class CtreeBuilder(DFDAGTopowalker):
             return
         if isinstance(node.routine, dfdag.Return()):
             raise NotImplementedError("TODO: handling return statements.")
+        
+        
         if isinstance(node.output.type, dfdag.ScalarType):
-            out_sym = self._new_symbol()
-            self.scalar_symbols[node.output] = out_sym
-            out_ct =  ctcn.SymbolRef(out_sym, ctypes.c_double),
-            
-            in_cts = []
+            self._index_map = None
+            in_cs = []
             for input in node.inputs:
-                in_cts = yms.append( self.scalar_symbols[input] )
-
-            c_code = self._translate_routine(node.routine, in_cts, out_c)
-            self._code.append( c_code ) 
+                in_cs.append( self._translate_value(input) )
+            out_cs = ctcn.SymbolRef.unique("s", ctypes.c_double())
+            self.scalar_symbols[node.output] = out_cs.copy()
+            
+            c_ast = self._translate_routine(node.routine, in_cs, out_cs)
+            self.c_ast.append( c_ast ) 
         else:
             #just in case...
             assert( isinstance(node.output.type, dfdag.ArrayData) )
 
-            if not self.array_symbols.has_key(node.output.type):
+            if not self.array_symbols.has_key(node.output.type.data):
                 # allocate and create symbol
-                out_sym = self._new_symbol()
-                self._code.append( self._allocate_array(node.output, out_sym))
+                self.c_ast.append( self._allocate_array(node.output.type.data))
+            
+            self._index_map = [] # this is very important, it changes behaviour of other functions
+            for dim in output.type.shape:
+                self._index_map.append(
+                        (   ctcn.SymbolRef.unique("i",ctypes.c_long()), 
+                            self._shape_size_to_symbol(dim)
+                            )
+                        )
 
+            in_cs = []
+            for input in node.inputs:
+                in_cs.append( self._translate_value(input) )
 
+            loop_body_c_ast = self._create_loop_nest(
+                    node.routine,
+                    in_cs, 
+                    out_cs)
 
-            raise NotImplementedError("TODO very soon")
+            self.c_ast.append( loop_c_ast ) 
+
+def dfdag_to_ctree(dfdag):
+    ct_builder = CtreeBuilder(dfdag)
+    ct_builder.walk()
+    return ct_builder.c_ast
+
 
 def loop_block_ctree(loop_block, value_deps, value_variable_map):
     # linearize
     # allocate memory for new output variables and associate to array value data types
     # replace applies with assign
     # if value is not associated with variable, create def
-    pass
+    raise NotImplementedError("We will need this for sure.")
 
 
 
@@ -627,7 +717,7 @@ class CMathConversions(NodeTransformer):
 
     PY_OP_TO_CTREE_FN ={
             ast.Pow: "pow",
-            ast.USub: Op.SubUnary
+            ast.USub: ctcn.Op.SubUnary
             # TODO log, exp, sqrt, ... see math.h
     }
 

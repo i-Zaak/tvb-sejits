@@ -249,7 +249,13 @@ class VisitorTest(unittest.TestCase):
 
 
 
-class CodeGenTest(unittest.TestCase):
+class CtreeBuilderTest(unittest.TestCase):
+    def simple_scalar_test(self):
+        py_ast = ast.parse("x = 2 + b * c")
+        dfdag = nes.ast_to_dfdag(py_ast)
+        c_ast = nes.dfdag_to_ctree(dfdag)
+    
+class CodeGenTestold(unittest.TestCase):
     def bfs_visitor_test(self):
         """
              d-+  f-+  +---------+
