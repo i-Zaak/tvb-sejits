@@ -4,10 +4,12 @@ class DFDAG:
     """
     Contains list of nodes, provides entry points for algorithms.
     """
-    def __init__(self, applies, values, results=[]):
+    def __init__(self, applies, values, inputs=None, results=[]):
         self.applies = applies
         self.values = values
         self.results = results
+        self.input_values = inputs
+        
 
 
     def nx_representation(self):

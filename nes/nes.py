@@ -7,7 +7,7 @@ from ctree.visitors import NodeTransformer, NodeVisitor
 import  ctree.c.nodes as ctcn #FunctionCall, CFile, Assign, ArrayRef, SymbolRef, Constant, Op, UnaryOp, Deref, For, Lt, PostInc, BinaryOp
 from ctree.cpp.nodes import CppInclude #TODO refactor to C?
 from ctree.nodes import Project
-from ctree.transformations import PyBasicConversions
+import  ctree.transformations as ctt
 from ctree.templates.nodes import StringTemplate
 from ctypes import CFUNCTYPE, c_double, c_int
 from ctree.types import get_ctype
@@ -141,6 +141,7 @@ class DFValueNodeCreator(NodeVisitor):
         self._value_map = {}
         self.applies = []
         self.results = []
+        self.input_values = {}
         self.dfdag = None
         self._variable_map = {}
         self.usedefs = UseDefs()
@@ -155,6 +156,9 @@ class DFValueNodeCreator(NodeVisitor):
                 value = dfdag.Value(type=dfdag.ArrayType(data=data))
                 self._variable_map[var] = value 
                 self.usedefs.define(value)
+            
+            # because the map will change during parsing
+            self.input_values[var] = self._variable_map[var] 
 
     
     def createDAG(self):
@@ -165,7 +169,7 @@ class DFValueNodeCreator(NodeVisitor):
             values.add(appl.output)
         values = list(values)
         
-        return dfdag.DFDAG(self.applies, values, self.results)
+        return dfdag.DFDAG(self.applies, values, self.input_values, self.results)
 
     def _synchronize(self, defs, dest):
         '''
@@ -456,7 +460,7 @@ class DFDAGTopowalker(ast.NodeVisitor):
         self._dfdag = dfdag
 
     def walk(self):
-        linearization = dfdag.linearize()
+        linearization = reversed(self._dfdag.linearize())
         for node in linearization:
             self.visit(node)
 
@@ -470,8 +474,8 @@ class CtreeBuilder(DFDAGTopowalker):
     '''
     
 
-    def __init__(self, dfdag):
-        super(CtreeBuilder,self).__init__(dfdag)
+    def __init__(self, df_dag):
+        super(CtreeBuilder,self).__init__(df_dag)
 
         '''
         Following two dictionaries keeps the mapping from Value nodes to
@@ -487,8 +491,20 @@ class CtreeBuilder(DFDAGTopowalker):
         self.scalar_symbols = {}
         self.array_symbols = {}
         self.dimension_symbols = {}
-        self.c_ast = []
-        # TODO register inputs?
+        self.c_ast = ctcn.CFile()
+        # register inputs
+        for in_val in self._dfdag.input_values.values():
+            if isinstance(in_val.type, dfdag.ScalarType):
+                in_cs = ctcn.SymbolRef.unique("s")
+                self.scalar_symbols[in_val] = in_cs
+            else:
+                assert(isinstance(in_val.type, dfdag.ArrayType))
+                in_cs = ctcn.SymbolRef.unique("a")
+                self.array_symbols[in_val.type.data] = in_cs
+                for dim in in_val.type.data.shape:
+                    if isinstance(dim, str) and not self.dimension_symbols.has_key(dim):
+                        self.dimension_symbols[dim] = ctcn.SymbolRef.unique("d")
+
 
 
     #
@@ -499,9 +515,9 @@ class CtreeBuilder(DFDAGTopowalker):
         translate = getattr(self, method) # exception for not implemented  
         return translate(routine, inputs, output)
     
-    def _translate_BinOp(routine, inputs, output):
-        op = ctcn.PyBasicConversions.PY_OP_TO_CTREE_OP[node.routine.op]()
-        return ctcn.Assign(ouput, ctcn.BinaryOp(inputs[0], op, inputs[1]))
+    def _translate_BinOp(self,routine, inputs, output):
+        op = ctt.PyBasicConversions.PY_OP_TO_CTREE_OP[type(routine.operator)]()
+        return ctcn.Assign(output, ctcn.BinaryOp(inputs[0], op, inputs[1]))
     # TODO other routines, such as numpy functions
 
 
@@ -524,7 +540,7 @@ class CtreeBuilder(DFDAGTopowalker):
         # this should be properly indexed according to loop context
         if self._index_map is not None:
             # 
-            return self_add_indexing(value.type, self._index_map)
+            return self._add_indexing(value.type)
         else:
             return ctcn.array_symbols[value.type.data].copy()
 
@@ -552,7 +568,7 @@ class CtreeBuilder(DFDAGTopowalker):
                 sym_type=ctypes.c_double(), 
                 value=ctcn.FunctionCall(
                     'malloc',
-                    array_size
+                    [array_size]
                     )
                 )
 
@@ -580,14 +596,14 @@ class CtreeBuilder(DFDAGTopowalker):
             # multiply by sizes of trailing dimensions
             for k in range(i+1,len(array_type.data.shape)):
                 mul = ctcn.Mul(mul, self._shape_size_to_symbol(array_type.data.shape[k]))
-            summands.add(mul)    
+            summands.append(mul)    
 
         #sum things up
         index = summands[0] # there better be something...
-        for i in range(1,len(summands[i])):
+        for i in range(1,len(summands)):
             index = ctcn.Add(summands[i], index)
 
-        return ctcn.ArrayRef(self.array_symbols[array_type].copy(), index)
+        return ctcn.ArrayRef(self.array_symbols[array_type.data].copy(), index)
 
     def _create_loop_nest(self, routine, in_cs, out_cs):
         """
@@ -597,20 +613,20 @@ class CtreeBuilder(DFDAGTopowalker):
 
         body_c_ast = self._translate_routine(routine, in_cs, out_cs)
         for dim, size in self._index_map:
-            body_c_ast = For(
-                    Assign(dim.copy(), Constant(0)),
-                    Lt(dim.copy(), size),
-                    PostInc(dim.copy()), 
+            body_c_ast = ctcn.For(
+                    ctcn.Assign(dim.copy(), ctcn.Constant(0)),
+                    ctcn.Lt(dim.copy(), size),
+                    ctcn.PostInc(dim.copy()), 
                     [body_c_ast]
                     )
         return body_c_ast
 
 
     def visit_Apply(self, node):
-        if isinstance(node.routine, dfdag.Synchronize()):
+        if isinstance(node.routine, dfdag.Synchronize):
             # just a helper routine, ignore
             return
-        if isinstance(node.routine, dfdag.Return()):
+        if isinstance(node.routine, dfdag.Return):
             raise NotImplementedError("TODO: handling return statements.")
         
         
@@ -623,23 +639,24 @@ class CtreeBuilder(DFDAGTopowalker):
             self.scalar_symbols[node.output] = out_cs.copy()
             
             c_ast = self._translate_routine(node.routine, in_cs, out_cs)
-            self.c_ast.append( c_ast ) 
+            self.c_ast.body.append( c_ast ) 
         else:
             #just in case...
-            assert( isinstance(node.output.type, dfdag.ArrayData) )
+            assert( isinstance(node.output.type, dfdag.ArrayType) )
 
             if not self.array_symbols.has_key(node.output.type.data):
                 # allocate and create symbol
-                self.c_ast.append( self._allocate_array(node.output.type.data))
+                self.c_ast.body.append( self._allocate_array(node.output.type.data))
             
             self._index_map = [] # this is very important, it changes behaviour of other functions
-            for dim in output.type.shape:
+            for dim in node.output.type.shape:
                 self._index_map.append(
                         (   ctcn.SymbolRef.unique("i",ctypes.c_long()), 
                             self._shape_size_to_symbol(dim)
                             )
                         )
 
+            out_cs = self._translate_value(node.output)
             in_cs = []
             for input in node.inputs:
                 in_cs.append( self._translate_value(input) )
@@ -649,7 +666,7 @@ class CtreeBuilder(DFDAGTopowalker):
                     in_cs, 
                     out_cs)
 
-            self.c_ast.append( loop_c_ast ) 
+            self.c_ast.body.append( loop_body_c_ast ) 
 
 def dfdag_to_ctree(dfdag):
     ct_builder = CtreeBuilder(dfdag)

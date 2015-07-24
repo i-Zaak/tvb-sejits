@@ -250,10 +250,21 @@ class VisitorTest(unittest.TestCase):
 
 
 class CtreeBuilderTest(unittest.TestCase):
+
+    def setUp(self):
+        from ctree.c.nodes import SymbolRef
+        SymbolRef._next_id = 0
+
     def simple_scalar_test(self):
         py_ast = ast.parse("x = 2 + b * c")
-        dfdag = nes.ast_to_dfdag(py_ast)
+        dfdag = nes.ast_to_dfdag(py_ast, {'b':'scalar','c':'scalar'})
         c_ast = nes.dfdag_to_ctree(dfdag)
+        self.assertTrue(c_ast.codegen() == '// <file: generated.c>\ndouble s_2 = s_1 * s_0;\ndouble s_3 = 2 + s_2;\n')
+    def simple_array_test(self):
+        py_ast = ast.parse("x = 2 + b * c")
+        dfdag = nes.ast_to_dfdag(py_ast, {'b':(2,'nodes','modes'),'c':(2,'nodes','modes')})
+        c_ast = nes.dfdag_to_ctree(dfdag)
+        import ipdb; ipdb.set_trace()
     
 class CodeGenTestold(unittest.TestCase):
     def bfs_visitor_test(self):
