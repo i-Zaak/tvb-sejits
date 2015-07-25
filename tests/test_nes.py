@@ -7,7 +7,12 @@ from nes import nes
 import networkx.algorithms.isomorphism as iso
 
 import networkx as nx
-
+from ctree.jit import JitModule
+from ctree import CONFIG
+from ctree.c.nodes import CFile, FunctionDecl, Return, SymbolRef
+from ctree.cpp.nodes import CppInclude
+import ctypes
+import numpy as np
 
 
 def graphs_isomorphic(dfdag1, dfdag2):
@@ -264,10 +269,32 @@ class CtreeBuilderTest(unittest.TestCase):
         c_ast = nes.dfdag_to_ctree(dfdag)
         self.assertTrue(c_ast.codegen() == '// <file: generated.c>\ndouble s_2 = s_1 * s_0;\ndouble s_3 = 2 + s_2;\n')
     def simple_array_test(self):
-        py_ast = ast.parse("x = 2 + b * c")
+        py_ast = ast.parse("x = 2 + b * c\nreturn x")
         dfdag = nes.ast_to_dfdag(py_ast, {'b':(2,'nodes','modes'),'c':(2,'nodes','modes')})
         c_ast = nes.dfdag_to_ctree(dfdag)
-        import ipdb; ipdb.set_trace()
+        c_ast = CFile(body=[
+                CppInclude("stdlib.h"),
+                FunctionDecl(
+                np.ctypeslib.ndpointer(dtype=np.float64)(), "test_fun", 
+                params = [
+                    SymbolRef("b", np.ctypeslib.ndpointer(dtype=np.float64)()),
+                    SymbolRef("c", np.ctypeslib.ndpointer(dtype=np.float64)()),
+                    SymbolRef("nodes", ctypes.c_int()),
+                    SymbolRef("modes", ctypes.c_int()),
+                    ],
+                defn = c_ast
+                )
+            ])
+        mod = JitModule()
+        submod = CFile("test_fun", [c_ast], path=CONFIG.get('jit','COMPILE_PATH'))._compile(c_ast.codegen())
+        mod._link_in(submod)
+        entry = c_ast.find(FunctionDecl, name="test_fun")             
+        c_test_fun = mod.get_callable(entry.name, entry.get_type())     
+        nodes = 19
+        modes = 5
+        a = np.random.rand(2, nodes, modes)
+        b = np.random.rand(2, nodes, modes)
+        self.assertTrue(np.allclose( c_test_fun(a,b,nodes,modes), 2+a*b)) 
     
 class CodeGenTestold(unittest.TestCase):
     def bfs_visitor_test(self):

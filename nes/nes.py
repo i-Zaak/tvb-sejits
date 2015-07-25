@@ -493,18 +493,30 @@ class CtreeBuilder(DFDAGTopowalker):
         self.dimension_symbols = {}
         self.c_ast = ctcn.CFile()
         # register inputs
-        for in_val in self._dfdag.input_values.values():
+        for in_sym in self._dfdag.input_values:
+            in_val = self._dfdag.input_values[in_sym]
             if isinstance(in_val.type, dfdag.ScalarType):
-                in_cs = ctcn.SymbolRef.unique("s")
+                in_cs = ctcn.SymbolRef.unique("s", ctypes.c_double())
                 self.scalar_symbols[in_val] = in_cs
             else:
                 assert(isinstance(in_val.type, dfdag.ArrayType))
-                in_cs = ctcn.SymbolRef.unique("a")
+                in_cs = ctcn.SymbolRef.unique("a",ctypes.POINTER(ctypes.c_double)())
                 self.array_symbols[in_val.type.data] = in_cs
                 for dim in in_val.type.data.shape:
                     if isinstance(dim, str) and not self.dimension_symbols.has_key(dim):
-                        self.dimension_symbols[dim] = ctcn.SymbolRef.unique("d")
-
+                        self.dimension_symbols[dim] = ctcn.SymbolRef.unique("d", ctypes.c_long())
+                        self.c_ast.body.append(
+                                ctcn.Assign(
+                                    self.dimension_symbols[dim], 
+                                    ctcn.SymbolRef(dim)
+                                    )
+                                )
+            self.c_ast.body.append(
+                    ctcn.Assign(
+                        in_cs, 
+                        ctcn.SymbolRef(in_sym)
+                        )
+                    )
 
 
     #
@@ -549,7 +561,7 @@ class CtreeBuilder(DFDAGTopowalker):
     #
     def _shape_size_to_symbol(self, dim):
         if isinstance(dim, str):
-            return ctcn.SymbolRef(self.dimension_symbols[dim])
+            return ctcn.SymbolRef(self.dimension_symbols[dim].copy())
         else:
             assert isinstance(dim, int)
             return ctcn.Constant(dim)
@@ -565,7 +577,7 @@ class CtreeBuilder(DFDAGTopowalker):
             array_size = ctcn.Mul(self._shape_size_to_symbol(dim),array_size)
 
         malloc_ast = ctcn.Cast(
-                sym_type=ctypes.c_double(), 
+                sym_type=ctypes.POINTER(ctypes.c_double)(), 
                 value=ctcn.FunctionCall(
                     'malloc',
                     [array_size]
@@ -612,9 +624,9 @@ class CtreeBuilder(DFDAGTopowalker):
         """
 
         body_c_ast = self._translate_routine(routine, in_cs, out_cs)
-        for dim, size in self._index_map:
+        for dim, size in reversed(self._index_map):
             body_c_ast = ctcn.For(
-                    ctcn.Assign(dim.copy(), ctcn.Constant(0)),
+                    ctcn.Assign(dim, ctcn.Constant(0)),
                     ctcn.Lt(dim.copy(), size),
                     ctcn.PostInc(dim.copy()), 
                     [body_c_ast]
