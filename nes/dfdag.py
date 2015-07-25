@@ -181,23 +181,24 @@ class ArrayType(Type):
             shape = self._broadcast_shapes(self.shape, other.shape)
         return ArrayType( data=ArrayData(shape))
 
-    # TODO refactor this to the function above
+    # TODO refactor this to the function above, also this is simplified
+    # version: we don't deal with size-1 dimensions
     def _broadcast_shapes(self, shape1, shape2):
-        if len(shape1) < len(shape2):
+        if len(shape1) <= len(shape2):
             shape = shape2
-        elif len(shape1) > len(shape2):
-            shape = shape1
         else:
-            shape = []
-            for i in reversed(range(len(shape1))):
-                if isinstance(shape1[i], str):
-                    shape.append(shape1[i])
-                elif isinstance(shape2[i], str):
-                    shape.append(shape2[i])
-                # we discard dimensions where both are 1
-            shape.reverse()
-            shape = tuple(shape)
-        return shape
+            shape = shape1
+        #else:
+        #    shape = []
+        #    for i in reversed(range(len(shape1))):
+        #        if isinstance(shape1[i], str):
+        #            shape.append(shape1[i])
+        #        elif isinstance(shape2[i], str):
+        #            shape.append(shape2[i])
+        #        # we discard dimensions where both are 1
+        #    shape.reverse()
+        #    shape = tuple(shape)
+        return tuple(shape)
 
     def __repr__(self):
         return "<ArrayType: shape:" + str(self.shape) + " | slice:" + str(self.slice) +" | data:" + str(self.data) +">"

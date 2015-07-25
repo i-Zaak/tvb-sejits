@@ -89,11 +89,14 @@ class AstParsingTest(unittest.TestCase):
                 df_dag.values[1].type.shape ==exp_shape)
 
     def multidim_known_dims_test(self):
-        py_ast = ast.parse("x")
-        df_dag = nes.ast_to_dfdag(py_ast, variable_shapes = {'x': (4,'nodes',3)})
+        py_ast = ast.parse("x = a +b")
+        df_dag = nes.ast_to_dfdag(py_ast, variable_shapes = {
+            'a': (4,'nodes',3),
+            'b': (4,'nodes',3)
+            })
         exp_shape = (4,'nodes',3)
-        self.assertTrue(df_dag.values[0].type.data.shape == exp_shape)
-        self.assertTrue(df_dag.values[0].type.shape == exp_shape)
+        self.assertTrue(df_dag.applies[0].output.type.data.shape == exp_shape)
+        self.assertTrue(df_dag.applies[0].output.type.shape == exp_shape)
 
 
 
