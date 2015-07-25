@@ -184,9 +184,9 @@ class AstParsingTest(unittest.TestCase):
                 variable_shapes = {
                     'x': ('svar','nodes','modes')
                     })
-        self.assertTrue(len(dfdag.results) == 1)
-        self.assertTrue(isinstance(dfdag.results[0].routine,Return))
-        self.assertTrue(dfdag.results[0].inputs[0].type.shape == ('svar','nodes','modes'))
+        self.assertFalse(dfdag.result is None)
+        self.assertTrue(isinstance(dfdag.result,Value))
+        self.assertTrue(dfdag.result.type.shape == ('svar','nodes','modes'))
         
         
     def sliced_assign_test(self):
@@ -198,8 +198,8 @@ class AstParsingTest(unittest.TestCase):
                     'c': 'scalar',
                     'x': ('nodes','modes')
                     })
-        self.assertTrue(len(dfdag.results) == 1)
-        self.assertTrue(dfdag.results[0].inputs[0].type.shape == (7,'nodes','modes'))
+        self.assertFalse(dfdag.result is None)
+        self.assertTrue(dfdag.result.type.shape == (7,'nodes','modes'))
         # how to test the synchronization properly?? 
         # Maybe rolling upwards from return statement?
 
@@ -266,23 +266,27 @@ class CtreeBuilderTest(unittest.TestCase):
     def simple_scalar_test(self):
         py_ast = ast.parse("x = 2 + b * c")
         dfdag = nes.ast_to_dfdag(py_ast, {'b':'scalar','c':'scalar'})
-        c_ast = nes.dfdag_to_ctree(dfdag)
+        c_ast = nes.dfdag_to_ctree(dfdag).c_ast
         self.assertTrue(c_ast.codegen() == '// <file: generated.c>\ndouble s_2 = s_1 * s_0;\ndouble s_3 = 2 + s_2;\n')
+
     def simple_array_test(self):
-        py_ast = ast.parse("x = 2 + b * c\nreturn x")
+        py_ast = ast.parse("x = 0.5 + b * c\nreturn x")
         dfdag = nes.ast_to_dfdag(py_ast, {'b':(2,'nodes','modes'),'c':(2,'nodes','modes')})
-        c_ast = nes.dfdag_to_ctree(dfdag)
+        ct_builder = nes.dfdag_to_ctree(dfdag)
+        ret_sym = ct_builder.return_symbol
+        ret_sym.type = np.ctypeslib.ndpointer(dtype=np.float64)()
         c_ast = CFile(body=[
                 CppInclude("stdlib.h"),
                 FunctionDecl(
-                np.ctypeslib.ndpointer(dtype=np.float64)(), "test_fun", 
+                None, "test_fun", 
                 params = [
                     SymbolRef("b", np.ctypeslib.ndpointer(dtype=np.float64)()),
                     SymbolRef("c", np.ctypeslib.ndpointer(dtype=np.float64)()),
                     SymbolRef("nodes", ctypes.c_int()),
                     SymbolRef("modes", ctypes.c_int()),
+                    ret_sym
                     ],
-                defn = c_ast
+                defn = ct_builder.c_ast
                 )
             ])
         mod = JitModule()
@@ -294,7 +298,10 @@ class CtreeBuilderTest(unittest.TestCase):
         modes = 5
         a = np.random.rand(2, nodes, modes)
         b = np.random.rand(2, nodes, modes)
-        self.assertTrue(np.allclose( c_test_fun(a,b,nodes,modes), 2+a*b)) 
+        
+        res = np.zeros((2,nodes,modes))
+        c_test_fun(a,b,nodes,modes,res)
+        self.assertTrue(np.allclose( res, 0.5+a*b)) 
     
 class CodeGenTestold(unittest.TestCase):
     def bfs_visitor_test(self):

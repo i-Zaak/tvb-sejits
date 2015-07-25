@@ -140,7 +140,7 @@ class DFValueNodeCreator(NodeVisitor):
     def __init__(self, shapes):
         self._value_map = {}
         self.applies = []
-        self.results = []
+        self.result = None  # One result per DAG. Can be generalized in future.
         self.input_values = {}
         self.dfdag = None
         self._variable_map = {}
@@ -169,7 +169,7 @@ class DFValueNodeCreator(NodeVisitor):
             values.add(appl.output)
         values = list(values)
         
-        return dfdag.DFDAG(self.applies, values, self.input_values, self.results)
+        return dfdag.DFDAG(self.applies, values, self.input_values, self.result)
 
     def _synchronize(self, defs, dest):
         '''
@@ -319,12 +319,12 @@ class DFValueNodeCreator(NodeVisitor):
     def visit_Return(self, node):
         self.generic_visit(node)
         sval = self._value_map[node.value]
-        syncvals = self.usedefs.use(sval,None)
-        if len(syncvals) > 1:
-            sval = self._synchronize(syncvals,sval)
-        ret = dfdag.Apply(dfdag.Return(), [sval], None) 
-        self.results.append(ret)
-
+        if isinstance(sval, dfdag.ArrayType):
+            syncvals = self.usedefs.use(sval,None)
+            if len(syncvals) > 1:
+                sval = self._synchronize(syncvals,sval)
+        #ret = dfdag.Apply(dfdag.Return(), [sval], None) 
+        self.result = sval
 
 class DFDAGVisitor(ast.NodeVisitor):
     """
@@ -518,6 +518,18 @@ class CtreeBuilder(DFDAGTopowalker):
                         )
                     )
 
+        # register result of the code block (return value)
+        if self._dfdag.result is not None:
+            if isinstance(self._dfdag.result.type, dfdag.ScalarType):
+                # TODO, should be returned? Don't care about this one yet.
+                raise NotImplementedError("Scalar results are not implemented.")
+            else:
+                assert(isinstance(self._dfdag.result.type, dfdag.ArrayType))
+                res_cs = ctcn.SymbolRef.unique("a",ctypes.POINTER(ctypes.c_double)())
+                self.array_symbols[self._dfdag.result.type.data] = res_cs
+                self.return_symbol = res_cs # to be used in function declaration
+
+
 
     #
     #   Routines
@@ -683,7 +695,7 @@ class CtreeBuilder(DFDAGTopowalker):
 def dfdag_to_ctree(dfdag):
     ct_builder = CtreeBuilder(dfdag)
     ct_builder.walk()
-    return ct_builder.c_ast
+    return ct_builder
 
 
 def loop_block_ctree(loop_block, value_deps, value_variable_map):
