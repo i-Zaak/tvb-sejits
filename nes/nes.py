@@ -698,6 +698,41 @@ def dfdag_to_ctree(dfdag):
     return ct_builder
 
 
+def FusionSetConstructor:
+
+    def __init__(self, df_dag, dimensions):
+        self.dimensions = dimensions
+        self.dfdag = df_dag
+
+    def _find_removable_arrays(self):
+        # first we find fusion preventing values fpvs: {dim:[fvp,...], ...}
+        fpvs = {} 
+        all_fpvs = set()
+        for appl in self.dfdag.applies:
+            if isinstance(appl.routine, dfdag.Reduction):
+                #TODO generalize to more operands
+                dimnum = appl.routine.dimension
+                source = appl.inputs[0]
+                dim = source.type.shape[dimnum]
+                if fpvs.has_key(dim):
+                    fpvs[dim].append(source)
+                else:
+                    fpvs[dim] = [source]
+                all_fpvs.add(source)
+
+        nx_dag = self.dfdag.nx_representation()
+        for val in self.dfdag.values:
+            if isinstance(val.type, dfdag.ArrayType) and val not in all_fpvs:
+                # potentially removable array, find all paths from def to all uses
+                paths = []
+                for use in nx_dag.predecessors(val):
+                    # loops over all uses of an array
+
+                for dim in val.type.shape:
+                    # check 
+
+
+
 def loop_block_ctree(loop_block, value_deps, value_variable_map):
     # linearize
     # allocate memory for new output variables and associate to array value data types

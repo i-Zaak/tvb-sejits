@@ -224,7 +224,12 @@ class Routine(object):
     """
     pass
 
-
+class Reduction(Routine):
+    # meant for sum, prod, dot, ...
+    def __init__(self, fun, dimension):
+        self.fun = fun
+        # TODO reduction operators with multiple operands (e.g. dot prod.)
+        self.dimension = dimension # position number in input arrays
 
 class BinOp(Routine):
     # note: output type determines function mapping dimension
