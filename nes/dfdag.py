@@ -27,7 +27,11 @@ class DFDAG:
     def to_dot(self):
         d_str = 'digraph {\nrankdir = BT;\n'
         for value in self.values:
-            d_str += '%d [label="%s",shape=box]\n' % (id(value), str(value))
+            if self.input_values.has_key(value):
+                label = self.input_values[value] + ": " + str(value)
+            else:
+                label = str(value)
+            d_str += '%d [label="%s",shape=box]\n' % (id(value), label)
         for apply in self.applies:
             d_str += '%d [label="%s"]\n' % (id(apply), str(apply))
             for input in apply.inputs:
@@ -224,12 +228,53 @@ class Routine(object):
     """
     pass
 
-class Reduction(Routine):
-    # meant for sum, prod, dot, ...
-    def __init__(self, fun, dimension):
-        self.fun = fun
-        # TODO reduction operators with multiple operands (e.g. dot prod.)
-        self.dimension = dimension # position number in input arrays
+# Numpy reductions: sum, dot, prod, ...
+# http://docs.scipy.org/doc/numpy/reference/routines.math.html#sums-products-differences
+class Sum(Routine):
+    """
+    For simplicity sake we support currently only sum over single dimension.
+    Will be extended in future.
+    """
+    def __init__(self, dimension):
+        self.dimension = dimension
+
+
+class Dot(Routine):
+    def __init__(self, input_types):
+        assert(len(input_types) == 2)
+        self.input_types = input_types
+        if isinstance(input_types[0], ScalarType):
+            if isinstance(input_types[1], ScalarType):
+                self.output_type = ScalarType()
+            else:
+                self.output_type = input_types[1]
+        elif isinstance(input_types[1], ScalarType):
+            if isinstance(input_types[0], ScalarType):
+                self.output_type = ScalarType()
+            else:
+                self.output_type = input_types[0]
+        else:
+            # both should be arrays
+            if len(self.input_types[0].shape) == len(self.input_types[1].shape) == 1:
+                self.output_type = ScalarType()
+            else:
+                # no more special cases please...
+                assert(input_type[0].shape[:-1] == input_type[1].shape[:-2])
+                newshape = list(input_type[0].shape[:-1]) # all but last
+                neshape.extend( input_type[1].shape[:-2]) # all before two last
+                newshape.append(input_type[1].shape[-1]) # add the last one
+                data = ArrayData(shape=newshape)
+                self.output_type = ArrayType(data=data)
+
+                
+
+
+
+
+
+
+
+# more to come in future
 
 class BinOp(Routine):
     # note: output type determines function mapping dimension
@@ -237,6 +282,9 @@ class BinOp(Routine):
         self.input_types = input_types
         self.output_type = output_type 
         self.operator = operator
+    
+    def __repr__(self):
+        return "<BinOp: " + str(self.operator.__class__) + ">" # for now, TODO prettyprint
 
 class Broadcast(Routine):
     """

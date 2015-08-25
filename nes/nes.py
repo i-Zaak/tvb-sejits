@@ -158,7 +158,8 @@ class DFValueNodeCreator(NodeVisitor):
                 self.usedefs.define(value)
             
             # because the map will change during parsing
-            self.input_values[var] = self._variable_map[var] 
+            #self.input_values[var] = self._variable_map[var] 
+            self.input_values[self._variable_map[var]] = var
 
     
     def createDAG(self):
@@ -234,6 +235,7 @@ class DFValueNodeCreator(NodeVisitor):
             inputs.append( self._value_map[operand] )
             input_types.append( self._value_map[operand].type )
 
+        # TODO:refactor this to BinOp operator
         output = dfdag.Value()
         out_type = dfdag.ScalarType()
         if isinstance(inputs[0].type, dfdag.ArrayType):
@@ -698,38 +700,38 @@ def dfdag_to_ctree(dfdag):
     return ct_builder
 
 
-def FusionSetConstructor:
-
-    def __init__(self, df_dag, dimensions):
-        self.dimensions = dimensions
-        self.dfdag = df_dag
-
-    def _find_removable_arrays(self):
-        # first we find fusion preventing values fpvs: {dim:[fvp,...], ...}
-        fpvs = {} 
-        all_fpvs = set()
-        for appl in self.dfdag.applies:
-            if isinstance(appl.routine, dfdag.Reduction):
-                #TODO generalize to more operands
-                dimnum = appl.routine.dimension
-                source = appl.inputs[0]
-                dim = source.type.shape[dimnum]
-                if fpvs.has_key(dim):
-                    fpvs[dim].append(source)
-                else:
-                    fpvs[dim] = [source]
-                all_fpvs.add(source)
-
-        nx_dag = self.dfdag.nx_representation()
-        for val in self.dfdag.values:
-            if isinstance(val.type, dfdag.ArrayType) and val not in all_fpvs:
-                # potentially removable array, find all paths from def to all uses
-                paths = []
-                for use in nx_dag.predecessors(val):
-                    # loops over all uses of an array
-
-                for dim in val.type.shape:
-                    # check 
+#def FusionSetConstructor:
+#
+#    def __init__(self, df_dag, dimensions):
+#        self.dimensions = dimensions
+#        self.dfdag = df_dag
+#
+#    def _find_removable_arrays(self):
+#        # first we find fusion preventing values fpvs: {dim:[fvp,...], ...}
+#        fpvs = {} 
+#        all_fpvs = set()
+#        for appl in self.dfdag.applies:
+#            if isinstance(appl.routine, dfdag.Reduction):
+#                #TODO generalize to more operands
+#                dimnum = appl.routine.dimension
+#                source = appl.inputs[0]
+#                dim = source.type.shape[dimnum]
+#                if fpvs.has_key(dim):
+#                    fpvs[dim].append(source)
+#                else:
+#                    fpvs[dim] = [source]
+#                all_fpvs.add(source)
+#
+#        nx_dag = self.dfdag.nx_representation()
+#        for val in self.dfdag.values:
+#            if isinstance(val.type, dfdag.ArrayType) and val not in all_fpvs:
+#                # potentially removable array, find all paths from def to all uses
+#                paths = []
+#                for use in nx_dag.predecessors(val):
+#                    # loops over all uses of an array
+#
+#                for dim in val.type.shape:
+#                    # check 
 
 
 
