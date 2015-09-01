@@ -302,6 +302,64 @@ class CtreeBuilderTest(unittest.TestCase):
         res = np.zeros((2,nodes,modes))
         c_test_fun(a,b,nodes,modes,res)
         self.assertTrue(np.allclose( res, 0.5+a*b)) 
+
+    def modified_wilson_cowan_test(self):
+        """
+        derivative[0] = (tau * (xi - e_i * xi ** 3 / 3.0 - eta) +
+                K11 * ((xi/ Aik) - xi) -
+                K12 * ((alpha/ Bik) - xi) +
+                tau * (IE_i + c_0 + lc_0))
+
+        derivative[1] = (xi - b * eta + m_i) / tau
+
+        derivative[2] = (tau * (alpha - f_i * alpha ** 3 / 3.0 - beta) +
+                    K21 * ((xi/ Cik) - alpha) +
+                    tau * (II_i + c_0 + lc_0))
+
+        derivative[3] = (alpha - b * beta + n_i) / tau
+        """
+
+        py_ast = ast.parse(
+"""
+derivative[0] = (tau * (xi - e_i * xi ** 3 / 3.0 - eta) +
+        K11 * ((xi/ Aik) - xi) -
+        K12 * ((alpha/ Bik) - xi) +
+        tau * (IE_i + c_0 + lc_0))
+"""
+        )
+        dfdag = nes.ast_to_dfdag(
+                py_ast, 
+                {
+                    'xi':('n_nodes', 3),
+                    'eta':('n_nodes', 3),
+                    'alpha':('n_nodes', 3),
+                    'beta':('n_nodes', 3),
+                    'derivative' : (4, 'n_nodes', 3),
+                    'lc_0' : ('n_nodes', 3),
+                    'c_0' : ('n_nodes', 3),
+                    'K11' : 'scalar',
+                    'K12' : 'scalar',
+                    'K21' : 'scalar',
+                    'tau' : 'scalar',
+                    'a' : 'scalar',
+                    'b' : 'scalar',
+                    'sigma' : 'scalar',
+                    'mu' : 'scalar',
+                    'Aik' : (3,),
+                    'Bik' : (3,),
+                    'Cik' : (3,),
+                    'e_i' : (3,),
+                    'f_i' : (3,),
+                    'IE_i' : (3,),
+                    'II_i' : (3,),
+                    'm_i' : (3,),
+                    'n_i' : (3,)
+                    }
+                )
+        import ipdb; ipdb.set_trace()
+
+
+                
     
 class CodeGenTestold(unittest.TestCase):
     def bfs_visitor_test(self):
