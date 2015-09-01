@@ -158,7 +158,8 @@ class DFValueNodeCreator(NodeVisitor):
                 self.usedefs.define(value)
             
             # because the map will change during parsing
-            self.input_values[var] = self._variable_map[var] 
+            #self.input_values[var] = self._variable_map[var] 
+            self.input_values[self._variable_map[var]] = var
 
     
     def createDAG(self):
@@ -234,6 +235,7 @@ class DFValueNodeCreator(NodeVisitor):
             inputs.append( self._value_map[operand] )
             input_types.append( self._value_map[operand].type )
 
+        # TODO:refactor this to BinOp operator
         output = dfdag.Value()
         out_type = dfdag.ScalarType()
         if isinstance(inputs[0].type, dfdag.ArrayType):
@@ -699,15 +701,21 @@ def dfdag_to_ctree(dfdag):
 
 
 def FusionSetConstructor:
-
-    def __init__(self, df_dag, dimensions):
-        self.dimensions = dimensions
+    def __init__(self, df_dag):
         self.dfdag = df_dag
+        self.starred = []
+        self.fpvs = {} # Fusion Preventing Values
 
-    def _find_removable_arrays(self):
-        # first we find fusion preventing values fpvs: {dim:[fvp,...], ...}
+    def construct_fusion_sets(self):
+        self._find_fusion_preventers()
+        self._find_removable_arrays()
+        self._resolve_local_conflicts()
+        self._detect_global_conflicts()
+        self._resolve_global_conflicts()
+
+    def _find_fusion_preventers(self):
+        # first we find fusion preventing values fpvs: {fpv:[dim, dim, dim], ...}
         fpvs = {} 
-        all_fpvs = set()
         for appl in self.dfdag.applies:
             if isinstance(appl.routine, dfdag.Reduction):
                 #TODO generalize to more operands
@@ -720,6 +728,8 @@ def FusionSetConstructor:
                     fpvs[dim] = [source]
                 all_fpvs.add(source)
 
+    def _find_removable_arrays(self):
+
         nx_dag = self.dfdag.nx_representation()
         for val in self.dfdag.values:
             if isinstance(val.type, dfdag.ArrayType) and val not in all_fpvs:
@@ -730,6 +740,15 @@ def FusionSetConstructor:
 
                 for dim in val.type.shape:
                     # check 
+
+
+    def _resolve_local_conflicts(self):
+        # check transitive paths around starred arrays
+
+    def _detect_global_conflicts(self):
+        # check cycles
+    def _resolve_global_conflicts(self):
+        # build and solve LP 
 
 
 
