@@ -233,7 +233,8 @@ class Routine(object):
 class Sum(Routine):
     """
     For simplicity sake we support currently only sum over single dimension.
-    Will be extended in future.
+    Will may be extended in future. Dimension is the position number in the
+    input array dimensions.
     """
     def __init__(self, dimension):
         self.dimension = dimension

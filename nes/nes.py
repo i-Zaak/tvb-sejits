@@ -699,6 +699,14 @@ def dfdag_to_ctree(dfdag):
     ct_builder.walk()
     return ct_builder
 
+class IteratorNamer(BFSVisitor):
+    def __init__(self):
+        self.iterator_map = {} # {value_node: [iter1,iter2,iter3]}
+
+        super(IteratorNamer,self).__init__()
+
+    def visit_Apply(self,node):
+
 
 def FusionSetConstructor:
     def __init__(self, df_dag):
@@ -715,18 +723,11 @@ def FusionSetConstructor:
 
     def _find_fusion_preventers(self):
         # first we find fusion preventing values fpvs: {fpv:[dim, dim, dim], ...}
-        fpvs = {} 
         for appl in self.dfdag.applies:
-            if isinstance(appl.routine, dfdag.Reduction):
-                #TODO generalize to more operands
-                dimnum = appl.routine.dimension
-                source = appl.inputs[0]
-                dim = source.type.shape[dimnum]
-                if fpvs.has_key(dim):
-                    fpvs[dim].append(source)
-                else:
-                    fpvs[dim] = [source]
-                all_fpvs.add(source)
+            # add other FPV cases here (broadcast,...)
+            if isinstance(appl.routine, dfdag.Sum):
+
+            elif isinstance(appl.routine, dfdag.Dot):
 
     def _find_removable_arrays(self):
 
