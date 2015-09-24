@@ -260,6 +260,14 @@ class Routine(object):
         """
         raise NotImplementedError() 
 
+    @property
+    def output_type(self):
+        """
+        This is supposed to be tuple set in the constructor based on given
+        input types.
+        """
+        raise NotImplementedError()
+
 # Numpy reductions: sum, dot, prod, ...
 # http://docs.scipy.org/doc/numpy/reference/routines.math.html#sums-products-differences
 class Sum(Routine):
@@ -268,18 +276,26 @@ class Sum(Routine):
     Will may be extended in future. Dimension is the position number in the
     input array dimensions.
     """
-    def __init__(self, dimension):
+
+    dimension_map = []
+    output_type = None
+
+    def __init__(self, input_type, dimension ):
         self.dimension = dimension
-    
-    def inputs_iterators(self, out_iterators):
-        input_iterators = []
-        input_iterators.extend( out_iterators[0:self.dimension] )
-        input_iterators.append(None) # the unknown reduced iterator 
-        input_iterators.extend( out_iterators[self.dimension:] )
+        iters = []
+        iters.extend( range(dimension))
+        iters.extend( range(dimension+1, len(input_type.shape)) )
+        self.dimension_map = zip([0]*len( iters ),iters)
+        self.output_type = ArrayType( ArrayData( 
+            shape = tuple( input_type.shape[i] for i in iters)
+            ) )
+
 
 
 class Dot(Routine):
     dimension_map = []
+    output_type = None
+
     def __init__(self, input_types):
         assert(len(input_types) == 2)
         self.input_types = input_types
@@ -330,7 +346,6 @@ class Dot(Routine):
 class BinOp(Routine):
     # note: output type determines function mapping dimension
     def __init__(self, operator, input_types, output_type):
-        self.input_types = input_types
         self.output_type = output_type 
         self.operator = operator
     

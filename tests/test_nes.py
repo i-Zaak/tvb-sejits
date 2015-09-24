@@ -221,7 +221,15 @@ class AstParsingTest(unittest.TestCase):
         self.assertListEqual(
                 dot.dimension_map, 
                 [[(0, 0)], [(0, 1)], [(0, 2)], [(1, 0)], [(1, 2)]])
+        #TODO other dot cases
         
+        sum = Sum(a,2)
+        self.assertListEqual(
+                sum.dimension_map, 
+                [(0, 0), (0, 1), (0, 3)])
+        self.assertTupleEqual(
+                sum.output_type.shape, 
+                ('i','j','n') ) 
 
 
 
