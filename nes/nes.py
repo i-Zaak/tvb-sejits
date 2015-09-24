@@ -700,15 +700,42 @@ def dfdag_to_ctree(dfdag):
     return ct_builder
 
 class IteratorNamer(BFSVisitor):
+    """
+    Names the dimensions of dependencies between DFDAG nodes. Should be
+    globally consistent...
+    """
+
     def __init__(self):
-        self.iterator_map = {} # {value_node: [iter1,iter2,iter3]}
+        self.iterator_map = {} # {value_node: [iter1,iter2,iter3]} output dims
+        self._it_id = 0
+        self._it_template = "it_%d"
 
         super(IteratorNamer,self).__init__()
 
+    def _gen_it_name(self):
+        it_name = _it_template % self._it_id
+        self._it_id += 1 
+        return it_name
+
+    def visit_DFDAG(self, node):
+        dims = []
+        if isinstance(node.result.type, dfdag.dfdag.ArrayType):
+            for i in node.result.type.shape:
+               dims.append(self._gen_it_name()) 
+        self.iterator_map[node.result] = dims
+        self.generic_visit(node.result)
+
     def visit_Apply(self,node):
+        pass
+        
+
+            
 
 
-def FusionSetConstructor:
+
+
+
+class FusionSetConstructor:
     def __init__(self, df_dag):
         self.dfdag = df_dag
         self.starred = []
@@ -726,8 +753,9 @@ def FusionSetConstructor:
         for appl in self.dfdag.applies:
             # add other FPV cases here (broadcast,...)
             if isinstance(appl.routine, dfdag.Sum):
-
+                pass
             elif isinstance(appl.routine, dfdag.Dot):
+                pass
 
     def _find_removable_arrays(self):
 
@@ -738,18 +766,24 @@ def FusionSetConstructor:
                 paths = []
                 for use in nx_dag.predecessors(val):
                     # loops over all uses of an array
+                    pass
 
                 for dim in val.type.shape:
                     # check 
+                    pass
 
 
     def _resolve_local_conflicts(self):
         # check transitive paths around starred arrays
+        pass
 
     def _detect_global_conflicts(self):
         # check cycles
+        pass
+
     def _resolve_global_conflicts(self):
         # build and solve LP 
+        pass
 
 
 

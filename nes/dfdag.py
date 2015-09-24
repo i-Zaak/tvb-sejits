@@ -226,7 +226,39 @@ class Routine(object):
     """
     Metadata container for funcion declaration.
     """
-    pass
+    
+    @property
+    def dimension_map(self):
+        """
+        This is for children to implement based on their semantics. Expected
+        form is list giving for each dimension in the output the "parent"
+        dimensions in inputs (shared loop indeces). 
+
+        Examples
+        C[i,j,k,m] = A[i,j,n] dot B[k,n,m] will result in following map:
+
+        [ 
+            [(0,0)], 
+            [(0,1)], 
+            [(1,0)], 
+            [(1,2)] 
+        ]
+
+
+        C[i,j,k,l] = A[i,j,k,l] + B[k,l] will have this map:
+
+        [
+            [(0,0)], 
+            [(0,1)], 
+            [(0,2),(1,0)], 
+            [(0,3),(1,1)]
+        ]
+
+
+
+
+        """
+        raise NotImplementedError() 
 
 # Numpy reductions: sum, dot, prod, ...
 # http://docs.scipy.org/doc/numpy/reference/routines.math.html#sums-products-differences
@@ -238,9 +270,16 @@ class Sum(Routine):
     """
     def __init__(self, dimension):
         self.dimension = dimension
+    
+    def inputs_iterators(self, out_iterators):
+        input_iterators = []
+        input_iterators.extend( out_iterators[0:self.dimension] )
+        input_iterators.append(None) # the unknown reduced iterator 
+        input_iterators.extend( out_iterators[self.dimension:] )
 
 
 class Dot(Routine):
+    dimension_map = []
     def __init__(self, input_types):
         assert(len(input_types) == 2)
         self.input_types = input_types
@@ -249,30 +288,41 @@ class Dot(Routine):
                 self.output_type = ScalarType()
             else:
                 self.output_type = input_types[1]
+                self.dimension_map = map(lambda x: [x] , zip(
+                        [1]*len(input_types[1].shape), 
+                        range(len(input_types[1].shape))) )
         elif isinstance(input_types[1], ScalarType):
             if isinstance(input_types[0], ScalarType):
                 self.output_type = ScalarType()
             else:
                 self.output_type = input_types[0]
+                self.dimension_map = map(lambda x: [x] , zip(
+                        [0]*len(input_types[0].shape), 
+                        range(len(input_types[0].shape))))
         else:
             # both should be arrays
             if len(self.input_types[0].shape) == len(self.input_types[1].shape) == 1:
                 self.output_type = ScalarType()
             else:
                 # no more special cases please...
-                assert(input_type[0].shape[:-1] == input_type[1].shape[:-2])
-                newshape = list(input_type[0].shape[:-1]) # all but last
-                neshape.extend( input_type[1].shape[:-2]) # all before two last
-                newshape.append(input_type[1].shape[-1]) # add the last one
+                assert(input_types[0].shape[-1] == input_types[1].shape[-2])
+                newshape = list(input_types[0].shape[:-1]) # all but last
+                newshape.extend( input_types[1].shape[:-2]) # all before two last
+                newshape.append(input_types[1].shape[-1]) # add the last one
                 data = ArrayData(shape=newshape)
                 self.output_type = ArrayType(data=data)
 
-                
+                self.dimension_map = map(lambda x: [x] , zip(
+                    [0]*len(input_types[0].shape[:-1]), 
+                    range(len(input_types[0].shape[:-1]))))
+                self.dimension_map.extend( map(lambda x: [x] , zip(
+                    [1]*len(input_types[1].shape[:-2]), 
+                    range(len(input_types[1].shape[:-2])))))
+                self.dimension_map.append([(1, len(input_types[1].shape) - 1)])
 
 
-
-
-
+        def inputs_iterators(self, out_iterators):
+            pass
 
 
 # more to come in future

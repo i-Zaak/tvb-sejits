@@ -214,6 +214,16 @@ class AstParsingTest(unittest.TestCase):
         # Should test for correct synchronization structure
         self.assertTrue(False, "TODO: write me!")
 
+    def dimension_map_test(self):
+        a = ArrayType(ArrayData( ('i','j','k','n')))
+        b = ArrayType(ArrayData( ('k','n','m')))
+        dot = Dot([a,b])
+        self.assertListEqual(
+                dot.dimension_map, 
+                [[(0, 0)], [(0, 1)], [(0, 2)], [(1, 0)], [(1, 2)]])
+        
+
+
 
 
 class VisitorTest(unittest.TestCase):
@@ -253,6 +263,20 @@ class VisitorTest(unittest.TestCase):
         self.assertTrue(tw.walk[2] == a.type)
         self.assertTrue(tw.walk[3] == b.type)
 
+
+
+class FusionsTest(unittest.TestCase):
+    def local_conflict_test(self):
+        pass
+
+    def global_conflict_detect_test(self):
+        pass
+    
+    def global_conflict_resolve_test(self):
+        pass
+
+    def legal_multidim_test(self):
+        pass
 
 
 
