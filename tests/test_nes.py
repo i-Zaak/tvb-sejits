@@ -217,10 +217,14 @@ class AstParsingTest(unittest.TestCase):
     def dimension_map_test(self):
         a = ArrayType(ArrayData( ('i','j','k','n')))
         b = ArrayType(ArrayData( ('k','n','m')))
+        c = ArrayType(ArrayData( ('k','n')))
         dot = Dot([a,b])
         self.assertListEqual(
                 dot.dimension_map, 
                 [[(0, 0)], [(0, 1)], [(0, 2)], [(1, 0)], [(1, 2)]])
+        self.assertTupleEqual(
+                dot.output_type.shape, 
+                ('i','j','k','k','m') ) 
         #TODO other dot cases
         
         sum = Sum(a,2)
@@ -230,6 +234,17 @@ class AstParsingTest(unittest.TestCase):
         self.assertTupleEqual(
                 sum.output_type.shape, 
                 ('i','j','n') ) 
+
+        binop = BinOp(None, [a,c])
+        
+        self.assertTupleEqual(
+                binop.output_type.shape, 
+                ('i','j','k','n')) 
+        self.assertListEqual(
+                binop.dimension_map,
+                [[(0, 0)], [(0, 1)], [(0, 2), [(1, 0)]], [(0, 3), [(1, 1)]]])
+
+
 
 
 

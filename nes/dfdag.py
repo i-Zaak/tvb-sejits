@@ -176,33 +176,6 @@ class ArrayType(Type):
         raise RuntimeError() 
 
 
-    def broadcast_with(self, other):
-        # correctness of the broadcast assumed
-        if isinstance(other, ScalarType):
-            shape =  self.shape
-        else:
-            assert( isinstance(other, ArrayType))
-            shape = self._broadcast_shapes(self.shape, other.shape)
-        return ArrayType( data=ArrayData(shape))
-
-    # TODO refactor this to the function above, also this is simplified
-    # version: we don't deal with size-1 dimensions
-    def _broadcast_shapes(self, shape1, shape2):
-        if len(shape1) <= len(shape2):
-            shape = shape2
-        else:
-            shape = shape1
-        #else:
-        #    shape = []
-        #    for i in reversed(range(len(shape1))):
-        #        if isinstance(shape1[i], str):
-        #            shape.append(shape1[i])
-        #        elif isinstance(shape2[i], str):
-        #            shape.append(shape2[i])
-        #        # we discard dimensions where both are 1
-        #    shape.reverse()
-        #    shape = tuple(shape)
-        return tuple(shape)
 
     def __repr__(self):
         return "<ArrayType: shape:" + str(self.shape) + " | slice:" + str(self.slice) +" | data:" + str(self.data) +">"
@@ -337,18 +310,51 @@ class Dot(Routine):
                 self.dimension_map.append([(1, len(input_types[1].shape) - 1)])
 
 
-        def inputs_iterators(self, out_iterators):
-            pass
 
 
 # more to come in future
 
 class BinOp(Routine):
+    dimension_map = []
+    output_type = None
+
     # note: output type determines function mapping dimension
-    def __init__(self, operator, input_types, output_type):
-        self.output_type = output_type 
+    def __init__(self, operator, input_types):
         self.operator = operator
-    
+        
+        if isinstance(input_types[0], ArrayType):
+            if isinstance(input_types[1],ArrayType):
+                #  this is simplified version: we don't deal with size-1 dimensions; also TODO refactor
+                if len(input_types[0].shape) <= len(input_types[1].shape):
+                    shape = input_types[1].shape
+                    self.dimension_map = self._range_dims(1,len(input_types[1].shape)) 
+                    bcdims = self._range_dims(0,len(input_types[0].shape))
+                    for  i,j in enumerate(range(len(input_types[1].shape)-len(input_types[0].shape),len(input_types[1].shape))):
+                        self.dimension_map[j].append(bcdims[i])
+                else:
+                    shape = input_types[0].shape
+                    self.dimension_map = self._range_dims(0,len(input_types[0].shape))
+                    bcdims = self._range_dims(1,len(input_types[1].shape))
+                    for  i,j in enumerate(range(len(input_types[0].shape)-len(input_types[1].shape),len(input_types[0].shape))):
+                        self.dimension_map[j].append(bcdims[i])
+                shape = tuple(shape)
+                self.output_type = ArrayType( data=ArrayData(shape))
+            else:
+                self.output_type = ArrayType( data=ArrayData(input_types[0].shape))
+                self.dimension_map = self.range_dims(0,len(input_types[0].shape) )
+        elif isinstance(input_types[1], ArrayType):
+            self.output_type = ArrayType( data=ArrayData(input_types[1].shape))
+            self.dimension_map = self._range_dims(1,len(input_types[1].shape) )
+        else:
+            self.output_type = ScalarType()
+
+    def _range_dims(self,position, length):
+        return map(lambda x: [x] , zip( [position]*length, range(length)) )
+
+
+
+
+        
     def __repr__(self):
         return "<BinOp: " + str(self.operator.__class__) + ">" # for now, TODO prettyprint
 
