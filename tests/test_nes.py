@@ -289,6 +289,42 @@ class VisitorTest(unittest.TestCase):
 
 
 class FusionsTest(unittest.TestCase):
+    def fpv_test(self):
+        # a + b * dot(c,d)
+        # TODO replace by parsing when numpy is ready
+        a = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        b = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        c = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        d = Value(type=ArrayType(data=ArrayData(shape=("modes","modes"))))
+        e = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        f = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        g = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        op1 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))]
+                ),
+                [a,b], 
+                e)
+        op2 = Apply(
+                Dot( 
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("modes","modes")))]
+                ),
+                [c,d], 
+                f)
+        op3 = Apply(
+                BinOp(ast.Mult(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))]
+                ),
+                [e,f], 
+                g)
+        dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
+        import ipdb; ipdb.set_trace()
+
+        # fusion preventing values
+
     def local_conflict_test(self):
         pass
 

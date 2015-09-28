@@ -234,6 +234,14 @@ class Routine(object):
         raise NotImplementedError() 
 
     @property
+    def fusion_preventers(self):
+        """
+        This is a list of dimensions of every input, which are not accessed on
+        per-element basis (and thus cannot be replaced by scalar in fusion).
+        """
+        raise NotImplementedError()
+
+    @property
     def output_type(self):
         """
         This is supposed to be tuple set in the constructor based on given
@@ -252,9 +260,11 @@ class Sum(Routine):
 
     dimension_map = []
     output_type = None
+    fusion_preventers = []
 
     def __init__(self, input_type, dimension ):
         self.dimension = dimension
+        self.fusion_preventers.append([dimension])
         iters = []
         iters.extend( range(dimension))
         iters.extend( range(dimension+1, len(input_type.shape)) )
@@ -266,8 +276,17 @@ class Sum(Routine):
 
 
 class Dot(Routine):
+    """
+    Numpy's dot function has following semantics:
+        * both operands scalar: scalar multiplication
+        * one operand scalar, other an array: element-wise multiplication
+        * both operands 1D vectors: inner product
+        * both operands 2+D arrays: sum product over last axis of 1st and
+          second-to last of 2nd
+    """
     dimension_map = []
     output_type = None
+    fusion_preventers = []
 
     def __init__(self, input_types):
         assert(len(input_types) == 2)
@@ -292,6 +311,7 @@ class Dot(Routine):
             # both should be arrays
             if len(self.input_types[0].shape) == len(self.input_types[1].shape) == 1:
                 self.output_type = ScalarType()
+                self.fusion_preventers = [ [0], [0] ] #fpv on both 1D inputs 
             else:
                 # no more special cases please...
                 assert(input_types[0].shape[-1] == input_types[1].shape[-2])
@@ -300,6 +320,10 @@ class Dot(Routine):
                 newshape.append(input_types[1].shape[-1]) # add the last one
                 data = ArrayData(shape=newshape)
                 self.output_type = ArrayType(data=data)
+                self.fusion_preventers = [
+                        [len(input_types[0].shape) - 1],
+                        [len(input_types[1].shape) - 2]
+                        ]
 
                 self.dimension_map = map(lambda x: [x] , zip(
                     [0]*len(input_types[0].shape[:-1]), 
@@ -317,6 +341,7 @@ class Dot(Routine):
 class BinOp(Routine):
     dimension_map = []
     output_type = None
+    fusion_preventers = []
 
     # note: output type determines function mapping dimension
     def __init__(self, operator, input_types):
@@ -378,6 +403,7 @@ class Broadcast(Routine):
 
 class Synchronize(Routine):
     # array access synchronization (sliced access)
+    # TODO FPV 
     pass
 
 class ArrayView(Routine):
@@ -385,6 +411,7 @@ class ArrayView(Routine):
     Denotes creation of view on an array, aka visit-subscript as opposed to
     Broadcast, which is definition-subscript
     '''
+    #TODO FPV
     pass
 
 class Return(Routine):

@@ -728,13 +728,6 @@ class IteratorNamer(BFSVisitor):
     def visit_Apply(self,node):
         pass
         
-
-            
-
-
-
-
-
 class FusionSetConstructor:
     def __init__(self, df_dag):
         self.dfdag = df_dag
@@ -747,15 +740,18 @@ class FusionSetConstructor:
         self._resolve_local_conflicts()
         self._detect_global_conflicts()
         self._resolve_global_conflicts()
+        self._select_valid_fusion()
+        #TODO construct and save the sets
 
     def _find_fusion_preventers(self):
         # first we find fusion preventing values fpvs: {fpv:[dim, dim, dim], ...}
         for appl in self.dfdag.applies:
-            # add other FPV cases here (broadcast,...)
-            if isinstance(appl.routine, dfdag.Sum):
-                pass
-            elif isinstance(appl.routine, dfdag.Dot):
-                pass
+            for i,dims in enumerate(appl.routine.fusion_preventers):
+                if not self.fpvs.self.has_key(appl.inputs[i]):
+                    fpvs[appl.inputs[i]] = set()
+                fpvs[appl.inputs[i]].update(dims)
+                    
+                    
 
     def _find_removable_arrays(self):
 
@@ -785,6 +781,9 @@ class FusionSetConstructor:
         # build and solve LP 
         pass
 
+    def _select_valid_fusion(self):
+        # check the fusion graph and select valid fusion
+        pass
 
 
 def loop_block_ctree(loop_block, value_deps, value_variable_map):
