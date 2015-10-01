@@ -290,6 +290,7 @@ class VisitorTest(unittest.TestCase):
 
 class FusionsTest(unittest.TestCase):
     def fpv_test(self):
+        # fusion preventing values
         # a + b * dot(c,d)
         # TODO replace by parsing when numpy is ready
         a = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
@@ -328,7 +329,6 @@ class FusionsTest(unittest.TestCase):
         self.assertSetEqual(fsc.fpvs[c],set([1]))
         self.assertSetEqual(fsc.fpvs[d], set([0]))
 
-        # fusion preventing values
 
     def local_conflict_test(self):
         pass
