@@ -757,7 +757,7 @@ class FusionSetConstructor:
 
         nx_dag = self.dfdag.nx_representation()
         for val in self.dfdag.values:
-            if isinstance(val.type, dfdag.ArrayType) and val not in all_fpvs:
+            if isinstance(val.type, dfdag.ArrayType) and val not in self.fpvs:
                 # potentially removable array, find all paths from def to all uses
                 paths = []
                 for use in nx_dag.predecessors(val):

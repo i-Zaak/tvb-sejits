@@ -69,6 +69,24 @@ class Apply(Node):
     def depends(self):
        return self.inputs
 
+    def propagate_dimension(self, input, dimension):
+        """
+        For given input array value node and its dimension (number) returns the
+        corresponding dimension numbers in the output 
+        """
+        inds = [i for i, inp in enumerate(self.inputs) if inp == input]
+        assert(len(inds) > 0) # is our input at all?
+        out_inds = set()
+        for input_index in inds:
+            for i, out_dim in enumerate(self.routine.dimension_map):
+                for source in out_dim:
+                    if source[0] == input_index and dimension == source[1]:
+                        out_inds.add(i)
+        return out_inds
+
+
+
+
     def __repr__(self):
         return "<Apply: " + str(self.routine) + ">"
 
@@ -227,11 +245,10 @@ class Routine(object):
             [(0,3),(1,1)]
         ]
 
-
-
-
         """
         raise NotImplementedError() 
+
+
 
     @property
     def fusion_preventers(self):

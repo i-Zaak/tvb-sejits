@@ -244,6 +244,17 @@ class AstParsingTest(unittest.TestCase):
                 binop.dimension_map,
                 [[(0, 0)], [(0, 1)], [(0, 2), [(1, 0)]], [(0, 3), [(1, 1)]]])
 
+    def dimension_propagation_test(self):
+        a = ArrayType(ArrayData( ('i','j','k')))
+        av = Value(type=a)
+        b = ArrayType(ArrayData( ('k','m')))
+        bv = Value(type=b)
+        c = ArrayType(ArrayData( ('i','j','m')))
+        cv = Value(type=c)
+        dot = Apply(routine=Dot([a,b]), inputs=[av,bv], output=cv)
+        self.assertSetEqual(dot.propagate_dimension(bv,1), set([2]))
+
+
 
 
 
