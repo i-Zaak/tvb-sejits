@@ -747,9 +747,9 @@ class FusionSetConstructor:
         # first we find fusion preventing values fpvs: {fpv:[dim, dim, dim], ...}
         for appl in self.dfdag.applies:
             for i,dims in enumerate(appl.routine.fusion_preventers):
-                if not self.fpvs.self.has_key(appl.inputs[i]):
-                    fpvs[appl.inputs[i]] = set()
-                fpvs[appl.inputs[i]].update(dims)
+                if not self.fpvs.has_key(appl.inputs[i]):
+                    self.fpvs[appl.inputs[i]] = set()
+                self.fpvs[appl.inputs[i]].update(dims)
                     
                     
 

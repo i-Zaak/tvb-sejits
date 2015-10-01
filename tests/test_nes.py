@@ -321,7 +321,12 @@ class FusionsTest(unittest.TestCase):
                 [e,f], 
                 g)
         dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
-        import ipdb; ipdb.set_trace()
+        fsc = nes.FusionSetConstructor(dfdag)
+        fsc._find_fusion_preventers()
+        self.assertTrue(fsc.fpvs.has_key(c))
+        self.assertTrue(fsc.fpvs.has_key(d))
+        self.assertSetEqual(fsc.fpvs[c],set([1]))
+        self.assertSetEqual(fsc.fpvs[d], set([0]))
 
         # fusion preventing values
 
