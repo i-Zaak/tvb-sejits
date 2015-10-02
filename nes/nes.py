@@ -731,8 +731,8 @@ class IteratorNamer(BFSVisitor):
 class FusionSetConstructor:
     def __init__(self, df_dag):
         self.dfdag = df_dag
-        self.starred = []
-        self.fpvs = {} # Fusion Preventing Values
+        self.starred = [] # list of tuples [(value, [dimensions]), ...]
+        self.fpvs = set() # Fusion Preventing Values set( (fpv,dim), ...)
 
     def construct_fusion_sets(self):
         self._find_fusion_preventers()
@@ -744,29 +744,30 @@ class FusionSetConstructor:
         #TODO construct and save the sets
 
     def _find_fusion_preventers(self):
-        # first we find fusion preventing values fpvs: {fpv:[dim, dim, dim], ...}
+        # first we find fusion preventing values fpvs: 
         for appl in self.dfdag.applies:
             for i,dims in enumerate(appl.routine.fusion_preventers):
-                if not self.fpvs.has_key(appl.inputs[i]):
-                    self.fpvs[appl.inputs[i]] = set()
-                self.fpvs[appl.inputs[i]].update(dims)
+                #if not self.fpvs.has_key(appl.inputs[i]):
+                #    self.fpvs[appl.inputs[i]] = set()
+                #self.fpvs[appl.inputs[i]].update(dims)
+                for dim in dims:
+                    self.fpvs.add((appl.inputs[i],dim))
                     
-                    
-
     def _find_removable_arrays(self):
-
         nx_dag = self.dfdag.nx_representation()
         for val in self.dfdag.values:
-            if isinstance(val.type, dfdag.ArrayType) and val not in self.fpvs:
-                # potentially removable array, find all paths from def to all uses
+            if isinstance(val.type, dfdag.ArrayType):
+                #find all paths from def to all uses
                 paths = []
                 for use in nx_dag.predecessors(val):
-                    # loops over all uses of an array
-                    pass
+                    paths.extend(nx.all_simple_paths(nx_dag,use,val))
 
-                for dim in val.type.shape:
-                    # check 
-                    pass
+                #check all dimensions
+                for dim, _ in enumerate(val.type.shape):
+                    if not (val,dim) in self.fpvs:
+                        # TODO check 
+                        pass
+                        
 
 
     def _resolve_local_conflicts(self):

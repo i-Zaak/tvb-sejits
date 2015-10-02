@@ -335,10 +335,8 @@ class FusionsTest(unittest.TestCase):
         dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
         fsc = nes.FusionSetConstructor(dfdag)
         fsc._find_fusion_preventers()
-        self.assertTrue(fsc.fpvs.has_key(c))
-        self.assertTrue(fsc.fpvs.has_key(d))
-        self.assertSetEqual(fsc.fpvs[c],set([1]))
-        self.assertSetEqual(fsc.fpvs[d], set([0]))
+        self.assertTrue( (c,1) in fsc.fpvs )
+        self.assertTrue( (d,0) in fsc.fpvs )
 
 
     def local_conflict_test(self):
