@@ -731,7 +731,7 @@ class IteratorNamer(BFSVisitor):
 class FusionSetConstructor:
     def __init__(self, df_dag):
         self.dfdag = df_dag
-        self.starred = [] # list of tuples [(value, [dimensions]), ...]
+        self.starred = set() # set of tuples [(value, dimension), ...]
         self.fpvs = set() # Fusion Preventing Values set( (fpv,dim), ...)
 
     def construct_fusion_sets(self):
@@ -757,34 +757,67 @@ class FusionSetConstructor:
         nx_dag = self.dfdag.nx_representation()
         for val in self.dfdag.values:
             if isinstance(val.type, dfdag.ArrayType):
-                #find all paths from def to all uses
-                paths = []
-                for use in nx_dag.predecessors(val):
-                    paths.extend(nx.all_simple_paths(nx_dag,use,val))
-
                 #check all dimensions
                 for dim, _ in enumerate(val.type.shape):
                     if not (val,dim) in self.fpvs:
-                        # TODO check 
-                        pass
-                        
-
+                        self.starred.add((val,dim))
 
     def _resolve_local_conflicts(self):
-        # check transitive paths around starred arrays
-        pass
+        unstars = set()
+        nx_dag = self.dfdag.nx_representation()
+        for deff, dim in self.starred:
+            #find all paths from def to all uses
+            paths = []
+            for use in nx_dag.predecessors(deff):
+                paths.extend(nx.all_simple_paths(nx_dag,use,deff))
+
+            # check transitive paths around starred arrays
+            for path in paths:
+                #TODO go over applies, check FP, and propagate the traced dim
+                if not self._check_path(path,dim):
+                    unstars.add((deff,dim))
+                    break # no need to check other paths
+        for unstar in unstars:
+            self.starred.remove(unstar)
+
+    def _check_path(self,path, dim):
+        currentdim = dim
+        deff = path[-1]
+        for node in reversed(path):
+            if isinstance(node, dfdag.Apply):
+                if node.prevents_fusion(deff, currentdim):
+                    return False
+                else:
+                    newdim = node.propagate_dimension(deff, currentdim)
+                    assert len(newdim) == 1 # for now
+                    currentdim = newdim.pop()
+            else:
+                deff = node
+        return True
+
+
 
     def _detect_global_conflicts(self):
-        # check cycles
-        pass
+        # detect cycles
+        self._mark = set()
+        self._cycles = set()
+        nx_dag = nx.Graph(self.dfdag.nx_representation())
+        for u,v in nx.edges():
+            self._exploration(nx_dag,u,u,v)
+        raise NotImplementedError()
+
+    def _exploration(self, g, k,u,v)
+        self._mark.add(k)
+        for t in self.dfdag.values
+        raise NotImplementedError()
 
     def _resolve_global_conflicts(self):
         # build and solve LP 
-        pass
+        raise NotImplementedError()
 
     def _select_valid_fusion(self):
         # check the fusion graph and select valid fusion
-        pass
+        raise NotImplementedError()
 
 
 def loop_block_ctree(loop_block, value_deps, value_variable_map):

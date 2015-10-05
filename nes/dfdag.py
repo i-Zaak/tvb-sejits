@@ -84,6 +84,18 @@ class Apply(Node):
                         out_inds.add(i)
         return out_inds
 
+    def prevents_fusion(self,input,dimension):
+        """
+        For given input value node and its dimension, does it prevent a fusion?
+        """
+        inds = [i for i, inp in enumerate(self.inputs) if inp == input]
+        assert(len(inds) > 0) # is our input at all?
+        for input_index in inds:
+            if dimension in self.routine.fusion_preventers[input_index]:
+                return True
+        return False
+
+
 
 
 
@@ -253,7 +265,7 @@ class Routine(object):
     @property
     def fusion_preventers(self):
         """
-        This is a list of dimensions of every input, which are not accessed on
+        This is a set of dimensions of every input, which are not accessed on
         per-element basis (and thus cannot be replaced by scalar in fusion).
         """
         raise NotImplementedError()
@@ -285,7 +297,7 @@ class Sum(Routine):
         iters = []
         iters.extend( range(dimension))
         iters.extend( range(dimension+1, len(input_type.shape)) )
-        self.dimension_map = zip([0]*len( iters ),iters)
+        self.dimension_map = map(lambda x: [x] ,zip([0]*len( iters ),iters))
         self.output_type = ArrayType( ArrayData( 
             shape = tuple( input_type.shape[i] for i in iters)
             ) )
@@ -372,20 +384,23 @@ class BinOp(Routine):
                     self.dimension_map = self._range_dims(1,len(input_types[1].shape)) 
                     bcdims = self._range_dims(0,len(input_types[0].shape))
                     for  i,j in enumerate(range(len(input_types[1].shape)-len(input_types[0].shape),len(input_types[1].shape))):
-                        self.dimension_map[j].append(bcdims[i])
+                        self.dimension_map[j].extend(bcdims[i])
                 else:
                     shape = input_types[0].shape
                     self.dimension_map = self._range_dims(0,len(input_types[0].shape))
                     bcdims = self._range_dims(1,len(input_types[1].shape))
                     for  i,j in enumerate(range(len(input_types[0].shape)-len(input_types[1].shape),len(input_types[0].shape))):
-                        self.dimension_map[j].append(bcdims[i])
+                        self.dimension_map[j].extend(bcdims[i])
                 shape = tuple(shape)
                 self.output_type = ArrayType( data=ArrayData(shape))
+                self.fusion_preventers = [set()] * len(shape)
             else:
                 self.output_type = ArrayType( data=ArrayData(input_types[0].shape))
                 self.dimension_map = self.range_dims(0,len(input_types[0].shape) )
+                self.fusion_preventers = [set()] * len(input_types[0].shape)
         elif isinstance(input_types[1], ArrayType):
             self.output_type = ArrayType( data=ArrayData(input_types[1].shape))
+            self.fusion_preventers = [set()] * len(input_types[1].shape)
             self.dimension_map = self._range_dims(1,len(input_types[1].shape) )
         else:
             self.output_type = ScalarType()

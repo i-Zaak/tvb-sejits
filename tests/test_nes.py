@@ -230,7 +230,7 @@ class AstParsingTest(unittest.TestCase):
         sum = Sum(a,2)
         self.assertListEqual(
                 sum.dimension_map, 
-                [(0, 0), (0, 1), (0, 3)])
+                [[(0, 0)], [(0, 1)], [(0, 3)]])
         self.assertTupleEqual(
                 sum.output_type.shape, 
                 ('i','j','n') ) 
@@ -242,7 +242,7 @@ class AstParsingTest(unittest.TestCase):
                 ('i','j','k','n')) 
         self.assertListEqual(
                 binop.dimension_map,
-                [[(0, 0)], [(0, 1)], [(0, 2), [(1, 0)]], [(0, 3), [(1, 1)]]])
+                [[(0, 0)], [(0, 1)], [(0, 2), (1, 0)], [(0, 3), (1, 1)]])
 
     def dimension_propagation_test(self):
         a = ArrayType(ArrayData( ('i','j','k')))
@@ -335,12 +335,72 @@ class FusionsTest(unittest.TestCase):
         dfdag = DFDAG([op1, op2, op3],[a, b, c, d, e, f, g])
         fsc = nes.FusionSetConstructor(dfdag)
         fsc._find_fusion_preventers()
-        self.assertTrue( (c,1) in fsc.fpvs )
-        self.assertTrue( (d,0) in fsc.fpvs )
+        self.assertSetEqual( set([(c,1),(d,0)]) , fsc.fpvs )
 
+        fsc._find_removable_arrays()
+        self.assertSetEqual(fsc.starred, set( [
+            (a,0), (a,1),
+            (b,0), (b,1),
+            (c,0), 
+             (d,1),
+            (e,0), (e,1),
+            (f,0), (f,1),
+            (g,0), (g,1),
+                ]))
 
     def local_conflict_test(self):
-        pass
+        # c = a + b; d = e + c;  f = sum(d,dim=1), g = c + f
+        a = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        b = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        c = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        d = Value(type=ArrayType(data=ArrayData(shape=("modes","modes"))))
+        e = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+        f = Value(type=ArrayType(data=ArrayData(shape=("nodes",))))
+        g = Value(type=ArrayType(data=ArrayData(shape=("nodes","modes"))))
+
+        op1 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))]
+                ),
+                [a,b], 
+                c)
+        op2 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))]
+                ),
+                [e,c], 
+                d)
+        op3 = Apply(
+                BinOp(ast.Add(),
+                    [   ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                        ArrayType(data=ArrayData(shape=("nodes","modes")))]
+                ),
+                [c,f], 
+                g)
+
+        op4 = Apply(
+                Sum( 
+                    ArrayType(data=ArrayData(shape=("nodes","modes"))),
+                    1
+                ),
+                [d], 
+                f)
+        dfdag = DFDAG([op1, op2, op3, op4],[a, b, c, d, e, f,g])
+        fsc = nes.FusionSetConstructor(dfdag)
+        fsc._find_fusion_preventers()
+        fsc._find_removable_arrays()
+        fsc._resolve_local_conflicts()
+        self.assertSetEqual(fsc.starred, set( [
+            (a,0), (a,1),
+            (b,0), (b,1),
+            (c,0), 
+            (d,0), 
+            (e,0), (e,1),
+            (f,0), 
+            (g,0), (g,1),
+            ]))
 
     def global_conflict_detect_test(self):
         pass
