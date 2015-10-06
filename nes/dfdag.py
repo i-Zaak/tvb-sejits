@@ -69,20 +69,38 @@ class Apply(Node):
     def depends(self):
        return self.inputs
 
-    def propagate_dimension(self, input, dimension):
+    def propagate_dimension(self, value_from, dimension, value_to=None):
         """
         For given input array value node and its dimension (number) returns the
         corresponding dimension numbers in the output 
         """
-        inds = [i for i, inp in enumerate(self.inputs) if inp == input]
-        assert(len(inds) > 0) # is our input at all?
-        out_inds = set()
-        for input_index in inds:
-            for i, out_dim in enumerate(self.routine.dimension_map):
-                for source in out_dim:
-                    if source[0] == input_index and dimension == source[1]:
-                        out_inds.add(i)
-        return out_inds
+        if value_to == self.output or value_to is None:
+            inds = [i for i, inp in enumerate(self.inputs) if inp == value_from]
+            assert(len(inds) > 0) # is our input at all?
+            out_inds = set()
+            for input_index in inds:
+                for i, out_dim in enumerate(self.routine.dimension_map):
+                    for source in out_dim:
+                        if source[0] == input_index and dimension == source[1]:
+                            out_inds.add(i)
+            return out_inds
+        elif value_from == self.output:
+            inds = [i for i, inp in enumerate(self.inputs) if inp == value_to]
+            assert(len(inds) > 0) # is our input at all?
+            in_inds = set()
+            for input_index in inds:
+                for source,new_dim in self.routine.dimension_map(dimension):
+                    if source == input_index:
+                        out_inds.add(new_dim)
+            return in_inds
+        else: # both inputs
+            inds_from = set([i for i, inp in enumerate(self.inputs) if inp == value_from])
+            inds_to = set([i for i, inp in enumerate(self.inputs) if inp == value_to])
+            for out_dim in self.routine.dimension_map:
+                for source,dim in out_dim:
+                    raise NotImplementedError()
+
+            
 
     def prevents_fusion(self,input,dimension):
         """

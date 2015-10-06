@@ -801,10 +801,17 @@ class FusionSetConstructor:
         # detect cycles
         self._mark = set()
         self._cycles = set()
-        nx_dag = nx.Graph(self.dfdag.nx_representation())
+        self._nx_dag = self.dfdag.nx_representation()
+        self._nx_graph = nx.Graph(self._nx_dag)
         for u,v in nx.edges():
             self._exploration(nx_dag,u,u,v)
         raise NotImplementedError()
+    
+    def _adj(self,k,d):
+        if isinstance(k,dfdag.Value):
+            return [(v,d) for _ , v in self._nx_graph.edges_iter([k])]
+        else:
+            raise NotImplementedError()
 
     def _exploration(self, g, k,u,v)
         self._mark.add(k)
