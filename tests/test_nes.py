@@ -252,7 +252,15 @@ class AstParsingTest(unittest.TestCase):
         c = ArrayType(ArrayData( ('i','j','m')))
         cv = Value(type=c)
         dot = Apply(routine=Dot([a,b]), inputs=[av,bv], output=cv)
+        d = ArrayType(ArrayData( ('i','j','k')))
+        dv = Value(type=d)
+        e = ArrayType(ArrayData( ('i','j','k')))
+        ev = Value(type=e)
+        plus = Apply(routine=BinOp(None, [a,d]), inputs=[av,dv], output=ev)
         self.assertSetEqual(dot.propagate_dimension(bv,1), set([2]))
+        self.assertSetEqual(plus.propagate_dimension(av,0,dv), set([0]))
+        self.assertSetEqual(plus.propagate_dimension(dv,1,av), set([1]))
+        self.assertSetEqual(plus.propagate_dimension(av,2,dv), set([2]))
 
 
 

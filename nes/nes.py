@@ -813,9 +813,10 @@ class FusionSetConstructor:
         else:
             raise NotImplementedError()
 
-    def _exploration(self, g, k,u,v)
+    def _exploration(self, g, k,u,v):
         self._mark.add(k)
-        for t in self.dfdag.values
+        for t in self.dfdag.values:
+            pass
         raise NotImplementedError()
 
     def _resolve_global_conflicts(self):

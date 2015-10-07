@@ -96,9 +96,18 @@ class Apply(Node):
         else: # both inputs
             inds_from = set([i for i, inp in enumerate(self.inputs) if inp == value_from])
             inds_to = set([i for i, inp in enumerate(self.inputs) if inp == value_to])
+            out_inds = set()
             for out_dim in self.routine.dimension_map:
+                paired_dims = set()
+                paired = False
                 for source,dim in out_dim:
-                    raise NotImplementedError()
+                    if source in inds_to:
+                        paired_dims.add(dim)
+                    elif source in inds_from and dim == dimension:
+                        paired = True
+                if paired:
+                    out_inds = out_inds.union(paired_dims)
+            return out_inds
 
             
 
