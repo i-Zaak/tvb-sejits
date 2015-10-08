@@ -14,6 +14,8 @@ from ctree.types import get_ctype
 
 import ctypes
 
+import pulp
+
 
 import ast
 from astmonkey import transformers as monkeytrans
@@ -840,8 +842,27 @@ class FusionSetConstructor:
         self._mark.pop(k)
 
     def _resolve_global_conflicts(self):
-        # build and solve LP 
-        raise NotImplementedError()
+        prob = pulp.LpProblem("Global conflicts", pulp.LpMinimize)
+
+        # TODO variables should really be array data, not value nodes
+        # also, we only need those present in the cycles, but nevermind
+        variables = {} 
+        for var,dim in self.starred:
+            variables[(var,dim)] = pulp.LpVariable(
+                    name="%s_%d" % (str(hex(id(var)))[1:],dim),
+                                cat='Binary')
+        
+        # select at least one value in each cycle
+        for cycle in self._cycles:
+            prob += sum( [variables[(value,dim)] for value,dim in cycle.iteritems() if isinstance(value, dfdag.Value)] ) >= 1
+
+        # cost function
+        prob += sum( variables.values() )
+        status = prob.solve(pulp.GLPK(msg=0))
+
+        for value_dim in variables:
+            if variables[value_dim].value() == 1:
+                self.starred.remove(value_dim)
 
     def _select_valid_fusion(self):
         # check the fusion graph and select valid fusion

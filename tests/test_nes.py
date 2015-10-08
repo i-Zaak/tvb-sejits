@@ -412,7 +412,7 @@ class FusionsTest(unittest.TestCase):
             (g,0), (g,1),
             ]))
 
-    def global_conflict_detect_test(self):
+    def global_conflict_test(self):
         a = ArrayType(ArrayData( ('i','j','k')))
         av = Value(type=a)
         b = ArrayType(ArrayData( ('i','j','k')))
@@ -445,6 +445,14 @@ class FusionsTest(unittest.TestCase):
         self.assertIn(dv, fsc._cycles[0])
         self.assertNotIn(ev, fsc._cycles[0])
 
+        fsc._resolve_global_conflicts()
+        self.assertTrue( sum( [
+                            (av,2) not in fsc.starred,
+                            (bv,2) not in fsc.starred,
+                            (cv,2) not in fsc.starred,
+                        ])== 1)
+        self.assertTrue(len(fsc.starred) == 12)
+        
     
     def global_conflict_resolve_test(self):
         pass
