@@ -800,13 +800,12 @@ class FusionSetConstructor:
     def _detect_global_conflicts(self):
         # detect cycles
         self._mark = {}
-        self._cycles = set()
+        self._cycles = []
         self._nx_dag = self.dfdag.nx_representation()
         self._nx_graph = nx.Graph(self._nx_dag)
         for u,d in self.fpvs:
-            for v in self._nx_graph.neighbors(u):
-                self._exploration(v,u,u,d)
-        raise NotImplementedError()
+            v = u.depends()[0]
+            self._exploration(v,u,u,d)
     
     def _adj(self,k,l,d):
         if isinstance(k,dfdag.Value):
@@ -817,7 +816,11 @@ class FusionSetConstructor:
                 if v == l:
                     continue
                 new_d = k.propagate_dimension(l,d,v)
-                adjs.append(v,new_d)
+                if len(new_d) > 0: #ugly, hacky, refactor, rethink...
+                    new_d = new_d.pop()
+                else:
+                    new_d = None
+                adjs.append((v,new_d))
             return adjs
 
     def _exploration(self, k,l,u,d):
@@ -825,12 +828,15 @@ class FusionSetConstructor:
 
         for t, d_new in self._adj(k,l,d):
             if t == u:
-                self._cycles.add(self._mark.copy())
-            elif self._nx_dag.has_edge(t,k) and k in self.starred and \
-                                                t not in self._mark:
-                self._exploration(t,k,u,d)
+                self._cycles.append(self._mark.copy())
+            elif    self._nx_dag.has_edge(t,k) \
+                    and (   (t,d_new) in self.starred \
+                            or isinstance(t,dfdag.Apply) \
+                        ) \
+                    and t not in self._mark:
+                self._exploration(t,k,u,d_new)
             elif self._nx_dag.has_edge(k,t) and t not in self._mark:
-                self._exploration(t,k,u,d)
+                self._exploration(t,k,u,d_new)
         self._mark.pop(k)
 
     def _resolve_global_conflicts(self):

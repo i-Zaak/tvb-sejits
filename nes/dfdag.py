@@ -89,9 +89,9 @@ class Apply(Node):
             assert(len(inds) > 0) # is our input at all?
             in_inds = set()
             for input_index in inds:
-                for source,new_dim in self.routine.dimension_map(dimension):
+                for source,new_dim in self.routine.dimension_map[dimension]:
                     if source == input_index:
-                        out_inds.add(new_dim)
+                        in_inds.add(new_dim)
             return in_inds
         else: # both inputs
             inds_from = set([i for i, inp in enumerate(self.inputs) if inp == value_from])
@@ -423,7 +423,7 @@ class BinOp(Routine):
                 self.fusion_preventers = [set()] * len(shape)
             else:
                 self.output_type = ArrayType( data=ArrayData(input_types[0].shape))
-                self.dimension_map = self.range_dims(0,len(input_types[0].shape) )
+                self.dimension_map = self._range_dims(0,len(input_types[0].shape) )
                 self.fusion_preventers = [set()] * len(input_types[0].shape)
         elif isinstance(input_types[1], ArrayType):
             self.output_type = ArrayType( data=ArrayData(input_types[1].shape))

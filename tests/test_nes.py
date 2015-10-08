@@ -268,6 +268,8 @@ class AstParsingTest(unittest.TestCase):
 
 
 
+
+
 class VisitorTest(unittest.TestCase):
     def walker_test(self):
         class TestWalker(nes.DFDAGVisitor):
@@ -411,7 +413,38 @@ class FusionsTest(unittest.TestCase):
             ]))
 
     def global_conflict_detect_test(self):
-        pass
+        a = ArrayType(ArrayData( ('i','j','k')))
+        av = Value(type=a)
+        b = ArrayType(ArrayData( ('i','j','k')))
+        bv = Value(type=b)
+        c = ArrayType(ArrayData( ('i','j','k')))
+        cv = Value(type=c)
+        d = ArrayType(ArrayData( ('i','j')))
+        dv = Value(type=d)
+        e = ArrayType(ArrayData( ('i','j','k')))
+        ev = Value(type=e)
+        s1 = Value(type=ScalarType())
+        s2 = Value(type=ScalarType())
+
+        l1 = Apply(routine=BinOp(None, [a,ScalarType()]), inputs=[av,s1], output=bv)
+        l2 = Apply(routine=BinOp(None, [a,ScalarType()]), inputs=[av,s2], output=cv)
+        l3 = Apply(routine=Sum(c, 2), inputs=[cv], output=dv)
+        l4 = Apply(routine=BinOp(None, [b,d]), inputs=[bv,dv], output=ev)
+        dfdag = DFDAG([l1, l2, l3, l4],[av, bv, cv, dv, ev, s1, s2])
+        fsc = nes.FusionSetConstructor(dfdag)
+        fsc._find_fusion_preventers()
+        fsc._find_removable_arrays()
+        fsc._resolve_local_conflicts()
+        self.assertSetEqual(fsc.fpvs, set([(cv,2)]))
+        self.assertTrue(len(fsc.starred) == 13) # all but (cv,2) 
+        
+        fsc._detect_global_conflicts()
+        self.assertTrue(len(fsc._cycles) == 1)
+        self.assertIn(av, fsc._cycles[0])
+        self.assertIn(bv, fsc._cycles[0])
+        self.assertIn(dv, fsc._cycles[0])
+        self.assertNotIn(ev, fsc._cycles[0])
+
     
     def global_conflict_resolve_test(self):
         pass
