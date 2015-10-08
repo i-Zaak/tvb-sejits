@@ -449,9 +449,9 @@ class FusionsTest(unittest.TestCase):
         self.assertTrue( sum( [
                             (av,2) not in fsc.starred,
                             (bv,2) not in fsc.starred,
-                            (cv,2) not in fsc.starred,
                         ])== 1)
         self.assertTrue(len(fsc.starred) == 12)
+        # TODO test for slices etc. 
         
     
     def global_conflict_resolve_test(self):

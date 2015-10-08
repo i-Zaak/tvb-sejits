@@ -177,6 +177,10 @@ class ArrayType(Type):
     def slice(self):
         return self._slice
 
+    @property
+    def dim_map(self):
+        return self._dim_map
+
     @slice.setter
     def slice(self, slice):
         """

@@ -844,25 +844,39 @@ class FusionSetConstructor:
     def _resolve_global_conflicts(self):
         prob = pulp.LpProblem("Global conflicts", pulp.LpMinimize)
 
-        # TODO variables should really be array data, not value nodes
-        # also, we only need those present in the cycles, but nevermind
-        variables = {} 
-        for var,dim in self.starred:
-            variables[(var,dim)] = pulp.LpVariable(
-                    name="%s_%d" % (str(hex(id(var)))[1:],dim),
+        data_vars = {}
+        for val,dim in self.starred:
+            if not data_vars.has_key(val.type.data):
+                data_dim = val.type.dim_map[dim] 
+                data_vars[(val.type.data,data_dim)] = pulp.LpVariable(
+                    name="%s_%d" % (str(hex(id(val.type.data)))[1:],data_dim),
                                 cat='Binary')
+
+        # could we leave out the val_vars altogether?
+        # also, we only need those present in the cycles...
+        val_vars = {} 
+        for val,dim in self.starred:
+            val_var = pulp.LpVariable(
+                    name="%s_%d" % (str(hex(id(val)))[1:],dim),
+                                cat='Binary')
+            val_vars[(val,dim)] = val_var 
+            prob += val_var <= data_vars[ 
+                    (val.type.data, val.type.dim_map[dim] ) ]
+
+
         
         # select at least one value in each cycle
         for cycle in self._cycles:
-            prob += sum( [variables[(value,dim)] for value,dim in cycle.iteritems() if isinstance(value, dfdag.Value)] ) >= 1
+            prob += sum( [val_vars[(value,dim)] for value,dim in cycle.iteritems() if isinstance(value, dfdag.Value)] ) >= 1
 
-        # cost function
-        prob += sum( variables.values() )
+        # cost function, TODO weight by size of dimensions?
+        prob += sum( data_vars.values() )
         status = prob.solve(pulp.GLPK(msg=0))
 
-        for value_dim in variables:
-            if variables[value_dim].value() == 1:
+        for value_dim in val_vars:
+            if val_vars[value_dim].value() == 1:
                 self.starred.remove(value_dim)
+
 
     def _select_valid_fusion(self):
         # check the fusion graph and select valid fusion
